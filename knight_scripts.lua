@@ -24,6 +24,12 @@ local function throttle(key, ms)
   return true
 end
 
+local function useTopThing(x, y, z)
+  local tile = g_map.getTile({x = x, y = y, z = z})
+  local top = tile and tile:getTopUseThing()
+  if top then g_game.use(top) end
+end
+
 local MSG_GAME = (MessageModes and MessageModes.Game) or 18
 local MSG_LOOK = (MessageModes and MessageModes.Look) or 20
 local MSG_DMG  = (MessageModes and MessageModes.DamageReceived) or 22
@@ -201,13 +207,83 @@ end)
 
 followMacro = macro(50, "Follow PVP", "3", function() end)
 
-macro(200, function()
+macro(500, function()
+  if not followMacro or not followMacro:isOn() then return end
+  if storage.followLeader == "" then
+    storage.followLeader = storage.lastAttacked or ""
+  end
   if not followIsOn() then return end
-  local target = getPlayerByName(storage.followLeader, true)
-  if not target then return end
-  if g_game.isFollowing and g_game.isFollowing() then return end
-  g_game.cancelAttackAndFollow()
-  g_game.follow(target)
+  local leader = getPlayerByName(storage.followLeader, true)
+  if not leader then return end
+  local lp = leader:getPosition()
+  if not lp or lp.z ~= posz() then return end
+  if getDistanceBetween(pos(), lp) > 1 then
+    autoWalk(lp, 20, { ignoreNonPathable = true, precision = 1 })
+  end
+end)
+
+local function useSurroundingTiles()
+  for i = -1, 1 do
+    for j = -1, 1 do
+      useTopThing(posx() + i, posy() + j, posz())
+    end
+  end
+end
+
+onCreaturePositionChange(function(creature, newPos, oldPos)
+  if not creature or not oldPos then return end
+  local cname = creature:getName()
+
+  if followIsOn() and cname == storage.followLeader then
+    if not newPos then
+      schedule(200, function() autoWalk(oldPos) end)
+      schedule(1000, useSurroundingTiles)
+    elseif oldPos.z == newPos.z then
+      autoWalk({x = oldPos.x, y = oldPos.y, z = oldPos.z})
+      schedule(300, function() useTopThing(oldPos.x, oldPos.y, oldPos.z) end)
+    else
+      for i = 1, 6 do
+        schedule(i * 200, function()
+          autoWalk(oldPos)
+          if getDistanceBetween(pos(), oldPos) == 0 and posz() > newPos.z
+            and not getCreatureByName(storage.followLeader) then
+            say("exani tera")
+          end
+        end)
+      end
+      useTopThing(newPos.x, newPos.y - 1, newPos.z)
+    end
+  end
+
+  if chaseIsOn() and lockIsOn() and cname == storage._target then
+    if not newPos then
+      schedule(200, function() autoWalk(oldPos) end)
+      schedule(1000, useSurroundingTiles)
+    elseif oldPos.z == newPos.z then
+      autoWalk({x = oldPos.x, y = oldPos.y, z = oldPos.z})
+      schedule(300, function() useTopThing(oldPos.x, oldPos.y, oldPos.z) end)
+    elseif oldPos.z ~= newPos.z then
+      for i = 1, 6 do
+        schedule(i * 200, function()
+          autoWalk(oldPos)
+          if getDistanceBetween(pos(), oldPos) == 0 and posz() > newPos.z
+            and not getPlayerByName(storage._target, true) then
+            say("exani tera")
+          end
+        end)
+      end
+      useTopThing(newPos.x, newPos.y - 1, newPos.z)
+    end
+  end
+
+  if newPos and cname == player:getName() and newPos.z > oldPos.z then
+    local targetName = followIsOn() and storage.followLeader
+      or (chaseIsOn() and lockIsOn() and storage._target or nil)
+    if targetName and targetName ~= "" and not getCreatureByName(targetName) then
+      say("exani tera")
+      useSurroundingTiles()
+    end
+  end
 end)
 
 local btnClearFollow
@@ -601,18 +677,12 @@ macro(50, "BugMap", "Shift+T", function()
   if not dx then return end
 
   local mp = pos()
-  local function useTile(tp)
-    local tile = g_map.getTile(tp)
-    local top = tile and tile:getTopUseThing()
-    if top then g_game.use(top) end
-  end
-
-  useTile(mp)
+  useTopThing(mp.x, mp.y, mp.z)
   local steps = math.max(math.abs(dx), math.abs(dy))
   local sx = dx == 0 and 0 or (dx > 0 and 1 or -1)
   local sy = dy == 0 and 0 or (dy > 0 and 1 or -1)
   for i = 1, steps do
-    useTile({ x = mp.x + sx * i, y = mp.y + sy * i, z = mp.z })
+    useTopThing(mp.x + sx * i, mp.y + sy * i, mp.z)
   end
 end)
 
