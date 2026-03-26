@@ -1,22 +1,6 @@
---[[
-  knight_scripts.lua — Knight PvP (PbotWars / game_bot)
-
-  HOTKEYS:
-  Buffs:   Auto Exori Gauge (1s)  | Auto Utamo Tempo [Shift+1] | Auto Haste [Shift+2]
-  Combat:  Anti Paralyze [Shift+3] | Anti Kick [Shift+4] | Combo Knight [Shift+5]
-  Target:  Auto Target [Shift+Q] | Clear Target [4] | Recover Target [Shift+E] | Auto Chase [2]
-  Follow:  Follow PVP [3] | Clear Follow [1]
-  Exiva:   Exiva Nome [5] | Exiva Last [Shift+R]
-  Util:    BugMap [Shift+T] | ID Cursor [Shift+Y] | Puxar Itens [Shift+F] | Anti Push [Shift+G]
-  Push:    Push Dest [Shift+V] | Marcar alvo [Shift+B] | Ir empurrar [Shift+X] | Parar [Shift+Z]
-]]
-
 setDefaultTab("Main")
 
--- ============================================================================
--- CONFIG
--- ============================================================================
-
+-- Config
 local UTAMO_SPELL  = "utamo tempo"
 local HASTE_SPELL  = "utani tempo hur"
 local STRIKE_SPELL = "exori strike"
@@ -24,10 +8,7 @@ local MAS_HUR      = "mas exori hur"
 local COMBO_CD     = 1750
 local PUSH_INTERVAL = 480
 
--- ============================================================================
--- HELPERS
--- ============================================================================
-
+-- Helpers
 local function trim(s) return s and s:match("^%s*(.-)%s*$") or "" end
 
 local function flashBtn(b)
@@ -47,10 +28,7 @@ local MSG_GAME = (MessageModes and MessageModes.Game) or 18
 local MSG_LOOK = (MessageModes and MessageModes.Look) or 20
 local MSG_DMG  = (MessageModes and MessageModes.DamageReceived) or 22
 
--- ============================================================================
--- STORAGE
--- ============================================================================
-
+-- Storage
 storage = storage or {}
 for k, v in pairs({
   followLeader = "", lastAttacked = "", lastAttackedMe = "",
@@ -61,10 +39,7 @@ for k, v in pairs({
   if storage[k] == nil then storage[k] = v end
 end
 
--- ============================================================================
--- SHARED STATE
--- ============================================================================
-
+-- State
 lockMacro, chaseMacro, followMacro = nil, nil, nil
 
 local function lockIsOn()   return lockMacro  and lockMacro:isOn() end
@@ -74,10 +49,7 @@ local function followIsOn() return followMacro and followMacro:isOn() and storag
 local comboStep, comboLastTargetId = 1, 0
 local pushDest, pushActive, lastPushAt = nil, false, 0
 
--- ============================================================================
--- EVENTS
--- ============================================================================
-
+-- Events
 onTextMessage(function(mode, text)
   if mode ~= MSG_DMG or not text then return end
   local name = text:match("due to an attack by (.+)%.$")
@@ -86,13 +58,12 @@ onTextMessage(function(mode, text)
   if name and name ~= "" then storage.lastAttackedMe = trim(name) end
 end)
 
-onAttackingCreatureChange(function(creature, oldCreature)
+onAttackingCreatureChange(function(creature)
   if not creature or not creature:isPlayer() then return end
   local n, id = creature:getName(), creature:getId()
   storage.lastAttacked = n
 
   if id ~= comboLastTargetId then comboStep = 1; comboLastTargetId = id end
-
   if lockIsOn() then storage._target = n; storage._targetId = id end
 
   if followMacro and followMacro:isOn() and storage.followLeader ~= n then
@@ -105,9 +76,7 @@ onAttackingCreatureChange(function(creature, oldCreature)
   end
 end)
 
--- ============================================================================
--- COMBATE
--- ============================================================================
+-- Combate
 addSeparator("sep_combate")
 addLabel("lbl_combate", "--- COMBATE ---")
 
@@ -176,9 +145,7 @@ macro(85, "Combo Knight", "Shift+5", function()
   end
 end)
 
--- ============================================================================
--- ALVO
--- ============================================================================
+-- Alvo
 addSeparator("sep_alvo")
 addLabel("lbl_alvo", "--- ALVO ---")
 
@@ -261,35 +228,35 @@ macro(100, function()
   prevLock, prevChase, prevFollow = lk, ch, fl
 end)
 
--- ============================================================================
--- EXIVA
--- ============================================================================
+-- Exiva
 addSeparator("sep_exiva")
 addLabel("lbl_exiva", "--- EXIVA ---")
 
-local EX_PH = {
-  {"is on a higher level to the south%-west","[+SW] acima sudoeste"},{"is on a higher level to the south%-east","[+SE] acima sudeste"},
-  {"is on a higher level to the north%-west","[+NW] acima noroeste"},{"is on a higher level to the north%-east","[+NE] acima nordeste"},
-  {"is on a higher level to the south","[+S] acima sul"},{"is on a higher level to the north","[+N] acima norte"},
-  {"is on a higher level to the east","[+E] acima leste"},{"is on a higher level to the west","[+W] acima oeste"},
-  {"is on a lower level to the south%-west","[-SW] abaixo sudoeste"},{"is on a lower level to the south%-east","[-SE] abaixo sudeste"},
-  {"is on a lower level to the north%-west","[-NW] abaixo noroeste"},{"is on a lower level to the north%-east","[-NE] abaixo nordeste"},
-  {"is on a lower level to the south","[-S] abaixo sul"},{"is on a lower level to the north","[-N] abaixo norte"},
-  {"is on a lower level to the east","[-E] abaixo leste"},{"is on a lower level to the west","[-W] abaixo oeste"},
-  {"is very far to the south%-west","[SW] muito longe sudoeste"},{"is very far to the south%-east","[SE] muito longe sudeste"},
-  {"is very far to the north%-west","[NW] muito longe noroeste"},{"is very far to the north%-east","[NE] muito longe nordeste"},
-  {"is very far to the south","[S] muito longe sul"},{"is very far to the north","[N] muito longe norte"},
-  {"is very far to the east","[E] muito longe leste"},{"is very far to the west","[W] muito longe oeste"},
-  {"is far to the south%-west","[SW] longe sudoeste"},{"is far to the south%-east","[SE] longe sudeste"},
-  {"is far to the north%-west","[NW] longe noroeste"},{"is far to the north%-east","[NE] longe nordeste"},
-  {"is far to the south","[S] longe sul"},{"is far to the north","[N] longe norte"},
-  {"is far to the east","[E] longe leste"},{"is far to the west","[W] longe oeste"},
-  {"is to the south%-west","[SW] sudoeste"},{"is to the south%-east","[SE] sudeste"},
-  {"is to the north%-west","[NW] noroeste"},{"is to the north%-east","[NE] nordeste"},
-  {"is to the south","[S] sul"},{"is to the north","[N] norte"},{"is to the east","[E] leste"},{"is to the west","[W] oeste"},
-  {"is standing next to you","[~] ao seu lado"},{"standing next to you","[~] ao lado"},{"next to you","[~] ao lado"},
-  {"is above you","[+] acima"},{"is below you","[-] abaixo"},{"above you","[+] acima"},{"below you","[-] abaixo"},
+local EX_DIRS = {
+  {"south%-west","SW","sudoeste"}, {"south%-east","SE","sudeste"},
+  {"north%-west","NW","noroeste"}, {"north%-east","NE","nordeste"},
+  {"south","S","sul"}, {"north","N","norte"},
+  {"east","E","leste"}, {"west","W","oeste"},
 }
+
+local EX_PH = {}
+for _, p in ipairs({
+  {"is on a higher level to the ", "+", "acima "},
+  {"is on a lower level to the ",  "-", "abaixo "},
+  {"is very far to the ",          "",  "muito longe "},
+  {"is far to the ",               "",  "longe "},
+  {"is to the ",                   "",  ""},
+}) do
+  for _, d in ipairs(EX_DIRS) do
+    local tag = p[2] ~= "" and (p[2] .. d[2]) or d[2]
+    EX_PH[#EX_PH + 1] = { p[1] .. d[1], "[" .. tag .. "] " .. p[3] .. d[3] }
+  end
+end
+for _, s in ipairs({
+  {"is standing next to you","[~] ao seu lado"}, {"standing next to you","[~] ao lado"},
+  {"next to you","[~] ao lado"}, {"is above you","[+] acima"}, {"is below you","[-] abaixo"},
+  {"above you","[+] acima"}, {"below you","[-] abaixo"},
+}) do EX_PH[#EX_PH + 1] = s end
 
 local function translateExiva(msg)
   if not msg or msg == "" then return msg end
@@ -310,13 +277,11 @@ local function parseExivaDist(msg)
 end
 
 local function parseExivaDirKey(translated)
-  if not translated or translated == "" or translated == "-" then return end
+  if not translated then return end
   local tag = translated:match("%[([%+%-]?%u%u?)%]") or translated:match("%[(~)%]")
   if not tag then return end
   if tag == "~" then return "C" end
-  tag = tag:gsub("^[%+%-]", "")
-  local valid = { N=1, S=1, E=1, W=1, NE=1, NW=1, SE=1, SW=1 }
-  return valid[tag] and tag or nil
+  return tag:gsub("^[%+%-]", "")
 end
 
 onTextMessage(function(mode, text)
@@ -343,29 +308,29 @@ local function castExiva(name, btn)
   flashBtn(btn)
 end
 
-local function getLastTargetName()
+local function exivaNome()
+  castExiva(trim(storage.exivaManualName), btnExivaNome)
+end
+
+local function exivaLast()
   local name = storage.lastAttacked or ""
   if name == "" then
     local t = g_game.getAttackingCreature()
     if t and t:isPlayer() then name = t:getName() end
   end
-  return name
+  castExiva(name, btnExivaLast)
 end
 
-btnExivaNome = addButton("btn_exiva_nome", "Exiva Nome [5]", function()
-  castExiva(trim(storage.exivaManualName), btnExivaNome)
-end)
+btnExivaNome = addButton("btn_exiva_nome", "Exiva Nome [5]", exivaNome)
 
-addTextEdit("exivaName", storage.exivaManualName or "", function(w, text)
+addTextEdit("exivaName", storage.exivaManualName or "", function(_, text)
   storage.exivaManualName = trim(text)
 end)
 
-btnExivaLast = addButton("btn_exiva_last", "Exiva Last [Shift+R]", function()
-  castExiva(getLastTargetName(), btnExivaLast)
-end)
+btnExivaLast = addButton("btn_exiva_last", "Exiva Last [Shift+R]", exivaLast)
 
-hotkey("5", function() castExiva(trim(storage.exivaManualName), btnExivaNome) end)
-hotkey("Shift+R", function() castExiva(getLastTargetName(), btnExivaLast) end)
+hotkey("5", exivaNome)
+hotkey("Shift+R", exivaLast)
 
 local RUNE_OFF, RUNE_ON = 3148, 3156
 local gridItems = {}
@@ -581,12 +546,6 @@ Panel
   end
 end)
 
-local DIR_LBL = {
-  NW="lbl_nw", N="lbl_n", NE="lbl_ne",
-  W="lbl_w",   C="lbl_c", E="lbl_e",
-  SW="lbl_sw", S="lbl_s", SE="lbl_se",
-}
-
 local function refreshGrid(dirKey)
   if dirKey == lastGridDir then return end
   lastGridDir = dirKey
@@ -594,7 +553,7 @@ local function refreshGrid(dirKey)
     local on = key == dirKey
     pcall(function()
       w:setItemId(on and RUNE_ON or RUNE_OFF)
-      local lbl = w:getParent():getChildById(DIR_LBL[key])
+      local lbl = w:getParent():getChildById("lbl_" .. key:lower())
       if lbl then lbl:setColor(on and "#00bcd4" or "#aaaaaa") end
     end)
   end
@@ -621,31 +580,33 @@ macro(200, function()
   refreshGrid(cachedExDir)
 end)
 
--- ============================================================================
--- UTIL
--- ============================================================================
+-- Util
 addSeparator("sep_util")
 addLabel("lbl_util", "--- UTIL ---")
+
+local BUG_DIRS = {
+  w={0,-5}, e={3,-3}, d={5,0}, c={3,3},
+  s={0,5}, z={-3,3}, a={-5,0}, q={-3,-3},
+}
 
 macro(50, "BugMap", "Shift+T", function()
   if modules.game_console and modules.game_console:isChatEnabled() then return end
   local k = modules.corelib and modules.corelib.g_keyboard
   if not k then return end
+
   local dx, dy
-  if     k.isKeyPressed("w") then dx, dy =  0, -5
-  elseif k.isKeyPressed("e") then dx, dy =  3, -3
-  elseif k.isKeyPressed("d") then dx, dy =  5,  0
-  elseif k.isKeyPressed("c") then dx, dy =  3,  3
-  elseif k.isKeyPressed("s") then dx, dy =  0,  5
-  elseif k.isKeyPressed("z") then dx, dy = -3,  3
-  elseif k.isKeyPressed("a") then dx, dy = -5,  0
-  elseif k.isKeyPressed("q") then dx, dy = -3, -3
-  else return end
+  for key, dir in pairs(BUG_DIRS) do
+    if k.isKeyPressed(key) then dx, dy = dir[1], dir[2]; break end
+  end
+  if not dx then return end
+
   local mp = pos()
   local function useTile(tp)
     local tile = g_map.getTile(tp)
-    if tile then local top = tile:getTopUseThing(); if top then g_game.use(top) end end
+    local top = tile and tile:getTopUseThing()
+    if top then g_game.use(top) end
   end
+
   useTile(mp)
   local steps = math.max(math.abs(dx), math.abs(dy))
   local sx = dx == 0 and 0 or (dx > 0 and 1 or -1)
@@ -818,9 +779,7 @@ macro(300, function()
   g_game.move(creature, np)
 end)
 
--- ============================================================================
--- HUD STATUS
--- ============================================================================
+-- HUD
 addSeparator("sep_hud")
 addLabel("lbl_hud", "--- STATUS ---")
 
@@ -833,14 +792,12 @@ local hud = {
   addLabel("k_h6", "Push: -"),
   addLabel("k_h7", "Mode: idle"),
 }
-local hudC = {}
-
-local function fmtHud(label, val) return label .. (val ~= "" and val or "-") end
 
 local function setHud(i, text, color)
-  local c = hudC[i] or { t = "", c = "" }; hudC[i] = c
-  if c.t ~= text then pcall(function() hud[i]:setText(text) end); c.t = text end
-  if color and c.c ~= color then pcall(function() hud[i]:setColor(color) end); c.c = color end
+  pcall(function()
+    hud[i]:setText(text)
+    hud[i]:setColor(color or "#aaaaaa")
+  end)
 end
 
 macro(280, function()
@@ -852,11 +809,13 @@ macro(280, function()
   local fl   = storage.followLeader or ""
   local pv   = trim(storage.pushVictimName or "")
 
-  setHud(1, fmtHud("Atacou-me: ", am), am  ~= "" and "#ff6666" or "red")
-  setHud(2, fmtHud("Ataquei: ",   la), la  ~= "" and "#66ff66" or "red")
-  setHud(3, fmtHud("Alvo: ",     tgt), tgt ~= "" and "green"   or "red")
-  setHud(4, chOn and ("Chase: " .. tgt) or "Chase: -", chOn and "green" or "red")
-  setHud(5, fOn  and ("Follow: " .. fl) or "Follow: -", fOn and "green" or "red")
+  local function v(s) return s ~= "" and s or "-" end
+
+  setHud(1, "Atacou-me: " .. v(am), am  ~= "" and "#ff6666" or "red")
+  setHud(2, "Ataquei: "   .. v(la), la  ~= "" and "#66ff66" or "red")
+  setHud(3, "Alvo: "     .. v(tgt), tgt ~= "" and "green"   or "red")
+  setHud(4, "Chase: " .. (chOn and tgt or "-"), chOn and "green" or "red")
+  setHud(5, "Follow: " .. (fOn and fl or "-"),  fOn  and "green" or "red")
 
   if pv ~= "" and pushDest then
     setHud(6, "Push: [" .. pv .. "] > " .. pushDest.x .. "," .. pushDest.y .. (pushActive and " [ON]" or ""),
