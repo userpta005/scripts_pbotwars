@@ -1,4 +1,7 @@
--- [INICIO] 18_push_control.lua
+-- [INICIO] 018_push_control.lua
+--
+-- Objetivo: defines tile destino (cursor), vítima (target ou last attacked), ativas “push”
+--   e o macro aproxima em melee e faz `move` da criatura tile a tile até ao destino.
 
 -- Push assistido: destino sob cursor, vitima por target, aproxima e empurra ate o tile.
 storage = storage or {}
@@ -129,4 +132,4 @@ macro(220, function()
   g_game.move(creature, np)
 end)
 
--- [FIM] 18_push_control.lua
+-- [FIM] 018_push_control.lua

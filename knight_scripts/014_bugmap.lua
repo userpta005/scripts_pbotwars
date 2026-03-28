@@ -1,4 +1,7 @@
--- [INICIO] 14_bugmap.lua
+-- [INICIO] 014_bugmap.lua
+--
+-- Objetivo: com teclas WASD/QEZC (estilo movimento), `use` no tile atual e ao longo
+--   de uma linha de tiles (“bug map”) sem disparar com chat aberto.
 
 -- Bug map: usa tiles em linha na direcao das teclas (sem depender do chat aberto).
 local function useTopThing(x, y, z)
@@ -39,4 +42,4 @@ macro(50, "BugMap", "Shift+T", function()
   end
 end)
 
--- [FIM] 14_bugmap.lua
+-- [FIM] 014_bugmap.lua

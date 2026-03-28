@@ -1,5 +1,0 @@
--- Arquivo legado.
--- Os scripts foram separados em arquivos independentes dentro de:
--- /media/user/USER/dev/tibia/knight_scripts/
---
--- Carregue somente os arquivos que quiser usar.

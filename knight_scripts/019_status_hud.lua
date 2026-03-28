@@ -1,4 +1,7 @@
--- [INICIO] 19_status_hud.lua
+-- [INICIO] 019_status_hud.lua
+--
+-- Objetivo: labels de estado vindos de `storage` (preenchido por 002, 011, 012, 018):
+--   atacou-me, ataquei, alvo, follow, push e modo deduzido por prioridade.
 
 -- Painel compacto: quem te bateu, alvo, follow, push e modo (idle/lock/chase/follow/push).
 storage = storage or {}
@@ -73,4 +76,4 @@ macro(280, function()
   setHud(6, mode, "#aaaaaa")
 end)
 
--- [FIM] 19_status_hud.lua
+-- [FIM] 019_status_hud.lua

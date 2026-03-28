@@ -1,4 +1,7 @@
--- [INICIO] 17_anti_push.lua
+-- [INICIO] 017_anti_push.lua
+--
+-- Objetivo: encher o tile onde estás com moedas (gold/plat alternados) ou usar crystal
+--   quando não houver stack livre, para reduzir empurrão.
 
 -- Alterna gold/plat no pe ou use de crystal para lotar o tile e dificultar push.
 local dropGold = true
@@ -35,4 +38,4 @@ macro(420, "Anti Push", "Shift+G", function()
   end
 end)
 
--- [FIM] 17_anti_push.lua
+-- [FIM] 017_anti_push.lua

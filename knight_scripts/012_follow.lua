@@ -1,4 +1,8 @@
--- [INICIO] 12_follow.lua
+-- [INICIO] 012_follow.lua
+--
+-- Objetivo: com macro “Follow PVP” ligada, o último player que atacaste vira líder;
+--   persegue com autoWalk; em mudanças de posição do líder tenta pisar/use e exani
+--   quando há salto de floor.
 
 -- Segue lider escolhido por ataque com macro ligada; troca de andar usa exani + use em tiles.
 storage = storage or {}
@@ -37,6 +41,7 @@ local function tryExaniTera()
   lastExaniTeraAt = now
 end
 
+-- Macro vazia: serve só como interruptor (isOn) para o resto da lógica.
 local followMacro = macro(50, "Follow PVP", "3", function() end)
 
 -- Com follow ligado, o player atacado vira lider automaticamente.
@@ -64,22 +69,24 @@ macro(250, function()
   end
 end)
 
+-- Reage ao líder (e a ti) mudando de tile: mesmo floor rasto, floor novo usa agendamentos.
 onCreaturePositionChange(function(creature, newPos, oldPos)
   if not followMacro or followMacro:isOff() then return end
   if not creature or not oldPos then return end
   local cname = creature:getName()
 
   if cname == storage.followLeader then
+    -- Líder desapareceu do mapa (teleport/subsolo): última pos + varrer tiles.
     if not newPos then
       -- Lider sumiu do mapa: tenta ultima posicao e depois usa tiles ao redor.
       schedule(200, function() autoWalk(oldPos) end)
       schedule(1000, useSurroundingTiles)
     elseif oldPos.z == newPos.z then
-      -- Mesmo andar: pisa no rastro e interage no tile que ele deixou.
+      -- Mesmo andar: pisa no rastro e usa o tile que ele deixou (portas/escadas).
       autoWalk({x = oldPos.x, y = oldPos.y, z = oldPos.z})
       schedule(300, function() useTopThing(oldPos.x, oldPos.y, oldPos.z) end)
     else
-      -- Mudou floor: varias tentativas de alinhar + exani se colado em degrau.
+      -- Outro Z: vários autoWalk para oldPos; se colado no degrau e sem ver líder, exani tera.
       for i = 1, 6 do
         schedule(i * 200, function()
           autoWalk(oldPos)
@@ -119,4 +126,4 @@ macro(150, function()
   storage._followEnabled = followMacro:isOn()
 end)
 
--- [FIM] 12_follow.lua
+-- [FIM] 012_follow.lua

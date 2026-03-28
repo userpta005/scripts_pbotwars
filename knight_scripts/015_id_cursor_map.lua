@@ -1,4 +1,7 @@
--- [INICIO] 15_id_cursor_map.lua
+-- [INICIO] 015_id_cursor_map.lua
+--
+-- Objetivo: Shift+Y imprime ID da criatura ou item sob o cursor no minimapa; se falhar,
+--   lista clientIds de todos os itens do tile.
 
 -- Hotkey: ID de creature/item sob cursor ou stack completo do tile.
 singlehotkey("Shift+Y", "ID cursor mapa", function()
@@ -43,4 +46,4 @@ singlehotkey("Shift+Y", "ID cursor mapa", function()
   if info then info(msg) end
 end)
 
--- [FIM] 15_id_cursor_map.lua
+-- [FIM] 015_id_cursor_map.lua

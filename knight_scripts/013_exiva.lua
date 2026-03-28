@@ -1,4 +1,7 @@
--- [INICIO] 13_exiva.lua
+-- [INICIO] 013_exiva.lua
+--
+-- Objetivo: cast `exiva "nome"` (manual ou último alvo), guarda resposta do servidor,
+--   traduz trechos EN para etiquetas curtas, extrai distância aproximada e mostra HUD + grade de runa.
 
 -- Exiva por nome/ultimo alvo, captura da mensagem, traducao e HUD com runa direcional.
 storage = storage or {}
@@ -26,8 +29,9 @@ local EX_DIRS = {
   {"east","E","leste"}, {"west","W","oeste"},
 }
 
+-- Pares (padrão regex na mensagem bruta, texto curto para HUD).
 local EX_PH = {}
--- Gera substituicoes "nivel + direcao" a partir de templates em ingles do servidor.
+-- Expande templates EN (“is to the north-west” etc.) × direções → frases PT resumidas.
 for _, p in ipairs({
   {"is on a higher level to the ", "+", "acima "},
   {"is on a lower level to the ",  "-", "abaixo "},
@@ -128,7 +132,7 @@ local gridItems = {}
 local lastGridDir = nil
 
 pcall(function()
-  -- Grade opcional com uma runa; falha silenciosa se UI nao suportar.
+  -- Painel opcional: um BotItem (runa) para indicar direção “N” no HUD; falha silenciosa se a UI não suportar.
   local grid = setupUI([[
 Panel
   id: exiva_rune_grid
@@ -171,4 +175,4 @@ macro(200, function()
   refreshGrid(cachedExDir)
 end)
 
--- [FIM] 13_exiva.lua
+-- [FIM] 013_exiva.lua

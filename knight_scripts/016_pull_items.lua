@@ -1,4 +1,7 @@
--- [INICIO] 16_pull_items.lua
+-- [INICIO] 016_pull_items.lua
+--
+-- Objetivo: periodicamente procura itens pickupable/movíveis nos 8 tiles vizinhos
+--   (2 direções por tick) e `move` para o teu pé.
 
 -- Offsets em anel ao redor do player; pullTick rotaciona qual lado checa neste tick.
 local PD = {{-1,-1},{0,-1},{1,-1},{1,0},{1,1},{0,1},{-1,1},{-1,0}}
@@ -31,4 +34,4 @@ macro(260, "Puxar Itens", "Shift+F", function()
   end
 end)
 
--- [FIM] 16_pull_items.lua
+-- [FIM] 016_pull_items.lua

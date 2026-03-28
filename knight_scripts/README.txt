@@ -1,34 +1,39 @@
 Scripts independentes extraidos de knight_scripts.lua
 
-Padrao de qualidade adotado:
+Ordenacao dos ficheiros (prefixo NNN_ = tres digitos, ordem estavel no bot):
+  001_storage_init.lua  … 019_status_hud.lua
+
+Padrao de qualidade:
 - um arquivo por funcionalidade principal
-- sem dependencia obrigatoria entre arquivos
-- early return para reduzir custo por tick
-- nil-guard em acessos de tile/creature/item
-- cooldown/throttle em casts e autowalk para evitar spam e exhausted
-- estado explicito em `storage` para HUD e interoperabilidade segura
+- carregar `001_storage_init.lua` primeiro (`knightChatOpen`, `knightSupportGap`, `knightMsSinceSupportCast`,
+  `knightAttackingCreature` / `knightAttackingPosition`, prioridade de suporte, `storage`)
+- early return, nil-guard, cooldowns, estado em `storage`
 
 Arquivos e objetivo:
-- 00a_storage_init.lua: inicializa defaults compartilhados em `storage`.
-- 00_damage_capture.lua: captura de combate unificada (`lastAttackedMe` e `lastAttacked`).
-- 02_auto_exori_gauge.lua: macro de exori gauge.
-- 02b_auto_utamo_tempo.lua: macro de utamo tempo com cheque de mana/shield.
-- 03_auto_haste.lua: haste com controle de intervalo para evitar spam.
-- 04_exeta_res.lua: exeta res somente em distancia valida e mana adequada.
-- 05_anti_paralyze.lua: anti paralyze com cooldown anti-flood.
-- 06_anti_kick.lua: rotacao ciclica continua.
-- 07_combo_knight.lua: combo de strikes + alinhamento para mas exori hur.
-- 08_auto_target.lua: lock de alvo + clear + recover + chase.
-- 12_follow.lua: follow por lider atacado + troca de floor + clear follow.
-- 13_exiva.lua: exiva manual/ultimo alvo + parser de direcao/distancia + HUD exiva.
-- 14_bugmap.lua: uso de tiles em direcao de teclado (bug map).
-- 15_id_cursor_map.lua: identifica creature/item sob cursor no mapa.
-- 16_pull_items.lua: puxa itens pickupaveis ao redor.
-- 17_anti_push.lua: anti-push com moedas (gold/plat/crystal).
-- 18_push_control.lua: definir destino, marcar vitima, iniciar/parar sequencia de push.
-- 19_status_hud.lua: HUD de estado (ataque, alvo, follow, push, modo).
+- 001_storage_init.lua — `storage`, defaults, `KNIGHT_SUPPORT_CAST_GAP`, prioridade `KNIGHT_SUPPORT_PRIORITY_ORDER`, helpers. Antes de `002_`.
+- 002_damage_capture.lua — `lastAttackedMe`, `lastAttacked`.
+- 003_auto_exori_gauge.lua — exori gauge.
+- 004_auto_utamo_tempo.lua — utamo tempo.
+- 005_auto_haste.lua — utani tempo hur.
+- 006_exeta_res.lua — exeta res melee (PVE/PVP).
+- 007_anti_paralyze.lua — anti paralyse.
+- 008_anti_kick.lua — rotacao anti-kick.
+- 009_combo_knight.lua — mas exori hur (turn + passo lateral).
+- 010_auto_exori_strike.lua — exori strike melee.
+- 011_auto_target.lua — lock alvo, chase, recover.
+- 012_follow.lua — follow PVP / floors.
+- 013_exiva.lua — exiva + HUD.
+- 014_bugmap.lua — bug map por teclas.
+- 015_id_cursor_map.lua — IDs sob cursor.
+- 016_pull_items.lua — puxar itens ao redor.
+- 017_anti_push.lua — anti-push moedas.
+- 018_push_control.lua — push assistido.
+- 019_status_hud.lua — painel de estado.
 
-Contrato de storage compartilhado (somente quando relevante):
+Opcional: antes de `001_storage_init.lua` definir `KNIGHT_SUPPORT_CAST_GAP` (padrao 1500 ms) e/ou
+  `KNIGHT_SUPPORT_PRIORITY_ORDER` — array de IDs (ver comentario no 001): ordem = prioridade para `lastSupportCastAt`.
+
+Contrato `storage` (quando relevante):
 - `lastAttackedMe`, `lastAttacked`
 - `_target`, `_targetId`, `_targetEnabled`, `_chaseEnabled`
 - `followLeader`, `_followEnabled`
@@ -36,17 +41,19 @@ Contrato de storage compartilhado (somente quando relevante):
 - `lastExivaName`, `lastExivaMessage`, `lastExivaDist`, `exivaManualName`, `lastExivaTime`
 
 Hotkeys padrao:
-- 02_auto_exori_gauge.lua: `Shift+0`
-- 02b_auto_utamo_tempo.lua: `Shift+1`
-- 03_auto_haste.lua: `Shift+2`
-- 05_anti_paralyze.lua: `Shift+3`
-- 06_anti_kick.lua: `Shift+4`
-- 07_combo_knight.lua: `Shift+5`
-- 08_auto_target.lua: `Shift+Q` (toggle), `4` (clear), `Shift+E` (recover), `2` (auto chase)
-- 12_follow.lua: `3` (toggle follow), `1` (clear follow)
-- 13_exiva.lua: `5` (exiva nome), `Shift+R` (exiva last)
-- 14_bugmap.lua: `Shift+T`
-- 15_id_cursor_map.lua: `Shift+Y`
-- 16_pull_items.lua: `Shift+F`
-- 17_anti_push.lua: `Shift+G`
-- 18_push_control.lua: `Shift+V` (destino), `Shift+B` (marcar), `Shift+X` (iniciar), `Shift+Z` (parar)
+- 003_auto_exori_gauge.lua: `Shift+0`
+- 004_auto_utamo_tempo.lua: `Shift+1`
+- 005_auto_haste.lua: `Shift+2`
+- 007_anti_paralyze.lua: `Shift+3`
+- 008_anti_kick.lua: `Shift+4`
+- 009_combo_knight.lua: `Shift+5`
+- 006_exeta_res.lua: `Shift+6`
+- 010_auto_exori_strike.lua: `Shift+7`
+- 011_auto_target.lua: `Shift+Q`, `4`, `Shift+E`, `2`
+- 012_follow.lua: `3`, `1`
+- 013_exiva.lua: `5`, `Shift+R`
+- 014_bugmap.lua: `Shift+T`
+- 015_id_cursor_map.lua: `Shift+Y`
+- 016_pull_items.lua: `Shift+F`
+- 017_anti_push.lua: `Shift+G`
+- 018_push_control.lua: `Shift+V`, `Shift+B`, `Shift+X`, `Shift+Z`
