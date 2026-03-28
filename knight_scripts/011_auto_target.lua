@@ -1,11 +1,12 @@
 --[[
-  011_auto_target.lua — Lock PVP (`storage._target`) + Auto Chase.
+  011_auto_target.lua — Lock de alvo PVP + Auto Chase.
 
-  Auto Target: reataca jogador lock no mesmo andar.
-  Auto Chase: chase mode 1, reattack frequente, `autoWalk` em direcção ao alvo; lógica de
-  escadas / portas / “exani tera” alinhada à ideia do 012_follow (rastro + use em volta).
+  - Auto Target (Shift+Q): mantém `g_game.attack` no jogador lockado no mesmo piso.
+  - Auto Chase (2): força chase mode 1 e replica a lógica vertical de 012 (passos, escadas,
+    `knightMapUseTopThing`, janela `_chaseVerticalUntil`, exani tera). Estado em `storage._chase*`.
 
-  Requer 001. Estados espelhados em `storage._targetEnabled` / `storage._chaseEnabled` (HUD).
+  Não ligar em simultâneo com 012 Follow PVP (_chase* vs _follow*).
+  Depende de: 001_storage_init.lua, 002 recomendado (lastAttacked).
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -16,14 +17,33 @@ if knightEnsureStorage then
     lastAttacked = "",
     _targetEnabled = false,
     _chaseEnabled = false,
+    _chaseVerticalUntil = 0,
+    _chaseLadderFx = nil,
+    _chaseLadderFy = nil,
+    _chaseLadderFz = nil,
   })
 end
 
+-- Mesmos valores que 012_follow.lua (manter alinhados ao mudar um dos ficheiros).
+local CHASE_POLL_MS = 85
+local CHASE_WALK_GAP_MS = 145
+local SAME_FLOOR_COMFORT_DIST = 2
+local SAME_DEST_REWALK_MS = 320
+local LADDER_USE_GAP_MS = 280
+local LADDER_SCAN_RADIUS = 2
+local LADDER_ACTION_DIST = 4
+local EXANI_GAP_MS = 900
+local VANISH_WALK_DELAY_MS = 90
+local VANISH_SURROUND_DELAY_MS = 750
+local FLOOR_CHASE_STEPS = 4
+local FLOOR_CHASE_STEP_MS = 115
+local LADDER_FOOT_RETRY_MS = { 60, 160 }
+local CHASE_VERTICAL_WINDOW_MS = 4800
+local VERTICAL_MISMATCH_ARM_MS = 550
+
 local REATTACK_GAP_MS = 120
 local CHASE_ATTACK_GAP_MS = 50
-local CHASE_WALK_GAP_MS = 100
 
---- Throttle genérico por chave (usa `now` do bot).
 local throttleAt = {}
 local function throttle(key, ms)
   if (now - (throttleAt[key] or 0)) < ms then return false end
@@ -31,50 +51,100 @@ local function throttle(key, ms)
   return true
 end
 
-local function gameAttackReady()
-  return g_game and g_game.isAttacking and g_game.getAttackingCreature and g_game.attack
+local lastExaniChaseAt = 0
+local lastChaseWalkAt = 0
+local lastChaseLadderUseAt = 0
+local chaseLadderAdjIndex = 0
+local chaseWasOn = false
+local chaseOffPlaneSince = nil
+local lastChaseWalkDestX, lastChaseWalkDestY, lastChaseWalkDestZ = nil, nil, nil
+
+local function clearChaseWalkDest()
+  lastChaseWalkDestX, lastChaseWalkDestY, lastChaseWalkDestZ = nil, nil, nil
 end
 
-local function safeAttack(creature)
-  if not creature or not gameAttackReady() then return end
-  pcall(function() g_game.attack(creature) end)
+local function shouldIssueChaseWalk(tx, ty, tz)
+  if lastChaseWalkDestX ~= tx or lastChaseWalkDestY ~= ty or lastChaseWalkDestZ ~= tz then
+    return true
+  end
+  return (now - lastChaseWalkAt) >= SAME_DEST_REWALK_MS
 end
 
-local function useTopThing(x, y, z)
-  if not g_map or not g_map.getTile then return end
-  pcall(function()
-    local tile = g_map.getTile({ x = x, y = y, z = z })
-    local top = tile and tile:getTopUseThing()
-    if top and g_game and g_game.use then g_game.use(top) end
-  end)
+local function rememberChaseWalk(tx, ty, tz)
+  lastChaseWalkDestX, lastChaseWalkDestY, lastChaseWalkDestZ = tx, ty, tz
+end
+
+local function verticalChaseArmed()
+  local u = storage._chaseVerticalUntil
+  return type(u) == "number" and u > now
+end
+
+local function armVerticalChase()
+  storage._chaseVerticalUntil = now + CHASE_VERTICAL_WINDOW_MS
+  clearChaseWalkDest()
+end
+
+local function clearVerticalChase()
+  storage._chaseVerticalUntil = 0
+  chaseOffPlaneSince = nil
+  storage._chaseLadderFx = nil
+  storage._chaseLadderFy = nil
+  storage._chaseLadderFz = nil
+  chaseLadderAdjIndex = 0
+end
+
+local function setChaseLadderFootFromOldPos(oldPos)
+  if not oldPos then return end
+  storage._chaseLadderFx = oldPos.x
+  storage._chaseLadderFy = oldPos.y
+  storage._chaseLadderFz = oldPos.z
+  chaseLadderAdjIndex = 0
+end
+
+local function chaseLadderFootXYOnPlane(lz)
+  local fx, fy = storage._chaseLadderFx, storage._chaseLadderFy
+  local fz = storage._chaseLadderFz
+  if type(fx) ~= "number" or type(fy) ~= "number" or type(fz) ~= "number" then return nil, nil end
+  if fz ~= lz then return nil, nil end
+  return fx, fy
 end
 
 local function useSurroundingChase()
   for i = -1, 1 do
     for j = -1, 1 do
-      useTopThing(posx() + i, posy() + j, posz())
+      knightMapUseTopThing(posx() + i, posy() + j, posz())
     end
   end
 end
 
-local lastExaniChaseAt = 0
-local function tryExaniChase()
-  if now - lastExaniChaseAt < 900 then return end
-  if say then say("exani tera") end
-  lastExaniChaseAt = now
-end
-
-local function chaseResolveTargetAnyFloor(tname)
-  local c = knightFindLockedPlayer(tname, false)
-  if c then return c end
-  if getCreatureByName then
-    local ok, x = pcall(function() return getCreatureByName(tname) end)
-    if ok and x then return x end
+local function tryChaseLadderUsesAtFoot(wx, wy, lz)
+  local mp = pos and pos() or nil
+  if not mp or mp.z ~= lz then return end
+  local cands = {}
+  for dx = -LADDER_SCAN_RADIUS, LADDER_SCAN_RADIUS do
+    for dy = -LADDER_SCAN_RADIUS, LADDER_SCAN_RADIUS do
+      local x, y = wx + dx, wy + dy
+      local t = { x = x, y = y, z = lz }
+      if getDistanceBetween(mp, t) <= 1 then
+        local df = getDistanceBetween({ x = wx, y = wy, z = lz }, t)
+        cands[#cands + 1] = { x = x, y = y, df = df }
+      end
+    end
   end
-  return nil
+  table.sort(cands, function(a, b) return a.df < b.df end)
+  if #cands == 0 then return end
+  chaseLadderAdjIndex = (chaseLadderAdjIndex % #cands) + 1
+  local c = cands[chaseLadderAdjIndex]
+  knightMapUseTopThing(c.x, c.y, lz)
 end
 
---- Rastro: alvo lock mudou de posição (Auto Chase ligado).
+local function tryExaniChaseTera()
+  if now - lastExaniChaseAt < EXANI_GAP_MS then return end
+  lastExaniChaseAt = now
+  if say then pcall(function() say("exani tera") end) end
+end
+
+--- Alvo lock: mesma ideia que `onCreaturePositionChange` do 012 (sem ramo same-Z).
 local function onChaseTargetMoved(creature, newPos, oldPos)
   if not creature or not oldPos then return end
   local nOk, cname = pcall(function() return creature:getName() end)
@@ -83,41 +153,58 @@ local function onChaseTargetMoved(creature, newPos, oldPos)
   if tname == "" or not knightNameMatchLock(tname, cname) then return end
 
   if not newPos then
-    schedule(200, function()
-      if autoWalk then autoWalk(oldPos) end
+    armVerticalChase()
+    setChaseLadderFootFromOldPos(oldPos)
+    schedule(VANISH_WALK_DELAY_MS, function()
+      if autoWalk then pcall(function() autoWalk(oldPos) end) end
     end)
-    schedule(1000, useSurroundingChase)
-  elseif oldPos.z == newPos.z then
-    if autoWalk then autoWalk({ x = oldPos.x, y = oldPos.y, z = oldPos.z }) end
-    schedule(300, function() useTopThing(oldPos.x, oldPos.y, oldPos.z) end)
-  else
-    for i = 1, 6 do
-      schedule(i * 200, function()
-        if autoWalk then autoWalk(oldPos) end
-        if getDistanceBetween(pos(), oldPos) == 0 and posz() > newPos.z then
-          local see = chaseResolveTargetAnyFloor(tname)
-          if not see then tryExaniChase() end
+    schedule(VANISH_SURROUND_DELAY_MS, function()
+      if verticalChaseArmed() then useSurroundingChase() end
+    end)
+  elseif oldPos.z ~= newPos.z then
+    armVerticalChase()
+    setChaseLadderFootFromOldPos(oldPos)
+    local targetWentUp = newPos.z < oldPos.z
+    if autoWalk then pcall(function() autoWalk(oldPos) end) end
+    if targetWentUp then
+      knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z)
+      for _, d in ipairs(LADDER_FOOT_RETRY_MS) do
+        schedule(d, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
+      end
+      schedule(LADDER_FOOT_RETRY_MS[#LADDER_FOOT_RETRY_MS] + 80, function()
+        tryChaseLadderUsesAtFoot(oldPos.x, oldPos.y, oldPos.z)
+      end)
+      knightMapUseTopThing(newPos.x, newPos.y - 1, newPos.z)
+    else
+      schedule(40, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
+      schedule(130, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
+      schedule(220, function() tryChaseLadderUsesAtFoot(oldPos.x, oldPos.y, oldPos.z) end)
+    end
+    for i = 1, FLOOR_CHASE_STEPS do
+      schedule(i * FLOOR_CHASE_STEP_MS, function()
+        if not verticalChaseArmed() then return end
+        if autoWalk and getDistanceBetween(pos(), oldPos) > 1 then
+          pcall(function() autoWalk(oldPos) end)
+        end
+        if getDistanceBetween(pos(), oldPos) == 0 and posz() > newPos.z and not knightSeePlayerByNameAnywhere(tname) then
+          tryExaniChaseTera()
         end
       end)
     end
-    useTopThing(newPos.x, newPos.y - 1, newPos.z)
   end
 end
 
---- Jogador local subiu andar: tentar recuperar alvo (exani + use ao redor).
-local function onLocalPlayerAscend(creature, newPos, oldPos)
+local function onLocalPlayerAscendChase(creature, newPos, oldPos)
   if not newPos or not oldPos or not creature then return end
   local nOk, cname = pcall(function() return creature:getName() end)
   local pOk, pname = pcall(function() return player:getName() end)
   if not nOk or not pOk or type(cname) ~= "string" or type(pname) ~= "string" or cname ~= pname then return end
   if newPos.z <= oldPos.z then return end
   local tname = knightTrim(storage._target or "")
-  if tname == "" then return end
-  local see = chaseResolveTargetAnyFloor(tname)
-  if not see then
-    tryExaniChase()
-    useSurroundingChase()
-  end
+  if tname == "" or not verticalChaseArmed() then return end
+  if knightSeePlayerByNameAnywhere(tname) then return end
+  tryExaniChaseTera()
+  useSurroundingChase()
 end
 
 local autoTargetMacro
@@ -135,14 +222,14 @@ onAttackingCreatureChange(function(creature, oldCreature)
 end)
 
 onCreaturePositionChange(function(creature, newPos, oldPos)
-  if not knightMacroIsOn(autoChaseMacro) then return end
+  if not autoChaseMacro or autoChaseMacro:isOff() then return end
   onChaseTargetMoved(creature, newPos, oldPos)
-  onLocalPlayerAscend(creature, newPos, oldPos)
+  onLocalPlayerAscendChase(creature, newPos, oldPos)
 end)
 
 autoTargetMacro = macro(100, "Auto Target", "Shift+Q", function()
   if knightChatOpen() then return end
-  if not gameAttackReady() then return end
+  if not knightGameAttackReady() then return end
 
   local tname = knightTrim(storage._target or "")
   local target = knightFindLockedPlayer(tname, true)
@@ -153,14 +240,124 @@ autoTargetMacro = macro(100, "Auto Target", "Shift+Q", function()
 
   storage._targetId = knightSafeCreatureId(target)
 
-  local cur = g_game.getAttackingCreature()
+  local cur = nil
+  pcall(function() cur = g_game.getAttackingCreature() end)
   local curName = ""
   if cur and cur.isPlayer and cur:isPlayer() then
     local cnOk, cn = pcall(function() return cur:getName() end)
     if cnOk and type(cn) == "string" then curName = knightTrim(cn) end
   end
-  if not knightNameMatchLock(tname, curName) or not g_game.isAttacking() then
-    if throttle("reattack", REATTACK_GAP_MS) then safeAttack(target) end
+  local attacking = false
+  pcall(function() attacking = g_game.isAttacking() end)
+  if not knightNameMatchLock(tname, curName) or not attacking then
+    if throttle("reattack", REATTACK_GAP_MS) then knightGameAttack(target) end
+  end
+end)
+
+autoChaseMacro = macro(CHASE_POLL_MS, "Auto Chase", "2", function()
+  if not autoChaseMacro or autoChaseMacro:isOff() then return end
+  if knightChatOpen() then return end
+
+  local tname = knightTrim(storage._target or "")
+  if tname == "" then
+    clearVerticalChase()
+    clearChaseWalkDest()
+    return
+  end
+
+  if g_game and g_game.getChaseMode and g_game.setChaseMode then
+    local okMode, m = pcall(function() return g_game.getChaseMode() end)
+    if okMode and m ~= 1 then pcall(function() g_game.setChaseMode(1) end) end
+  end
+
+  local target = knightFindLockedPlayer(tname, false)
+  if not target and getPlayerByName then
+    for _, multi in ipairs({ true, false }) do
+      local ok, p = pcall(function() return getPlayerByName(tname, multi) end)
+      if ok and p then target = p break end
+    end
+  end
+
+  if target then
+    storage._targetId = knightSafeCreatureId(target)
+  else
+    storage._targetId = 0
+  end
+
+  if target and knightGameAttackReady() and throttle("chase_attack", CHASE_ATTACK_GAP_MS) then
+    knightGameAttack(target)
+  end
+
+  if not autoWalk then return end
+
+  local lzOk, lz = pcall(function() return posz() end)
+  if not lzOk then return end
+  local mp = pos and pos() or nil
+  if not mp then return end
+
+  local lp, lpOk = nil, false
+  if target then
+    local a, b = pcall(function() return target:getPosition() end)
+    lpOk = a and b ~= nil
+    lp = b
+  end
+
+  local ffx, ffy = chaseLadderFootXYOnPlane(lz)
+
+  if lpOk and lp.z == lz then
+    clearVerticalChase()
+    chaseOffPlaneSince = nil
+    local sameDist = getDistanceBetween(mp, lp)
+    if sameDist <= SAME_FLOOR_COMFORT_DIST then return end
+    if now - lastChaseWalkAt < CHASE_WALK_GAP_MS then return end
+    if not shouldIssueChaseWalk(lp.x, lp.y, lp.z) then return end
+    pcall(function()
+      autoWalk(lp, 20, { ignoreNonPathable = true, precision = 2 })
+    end)
+    lastChaseWalkAt = now
+    rememberChaseWalk(lp.x, lp.y, lp.z)
+    return
+  end
+
+  if lpOk and lp and lp.z ~= lz then
+    if not chaseOffPlaneSince then chaseOffPlaneSince = now end
+    if not verticalChaseArmed() and (now - chaseOffPlaneSince) >= VERTICAL_MISMATCH_ARM_MS then
+      armVerticalChase()
+    end
+  elseif ffx and (not lpOk or not lp) then
+    if not chaseOffPlaneSince then chaseOffPlaneSince = now end
+    if not verticalChaseArmed() and (now - chaseOffPlaneSince) >= VERTICAL_MISMATCH_ARM_MS then
+      armVerticalChase()
+    end
+  end
+
+  local function doChaseOtherPlaneWalkUse(wx, wy)
+    if not verticalChaseArmed() then return end
+    local dest = { x = wx, y = wy, z = lz }
+    local dist = getDistanceBetween(mp, dest)
+    if dist <= LADDER_ACTION_DIST then
+      if now - lastChaseLadderUseAt >= LADDER_USE_GAP_MS then
+        tryChaseLadderUsesAtFoot(wx, wy, lz)
+        lastChaseLadderUseAt = now
+      end
+      return
+    end
+    if now - lastChaseWalkAt < CHASE_WALK_GAP_MS then return end
+    if not shouldIssueChaseWalk(wx, wy, lz) then return end
+    pcall(function()
+      autoWalk(dest, 20, { ignoreNonPathable = true, precision = 2 })
+    end)
+    lastChaseWalkAt = now
+    rememberChaseWalk(wx, wy, lz)
+  end
+
+  if ffx and verticalChaseArmed() then
+    doChaseOtherPlaneWalkUse(ffx, ffy)
+    return
+  end
+
+  if lpOk and lp and lp.z ~= lz and verticalChaseArmed() then
+    doChaseOtherPlaneWalkUse(lp.x, lp.y)
   end
 end)
 
@@ -168,6 +365,8 @@ local btnClear
 local function doClear()
   storage._target = ""
   storage._targetId = 0
+  clearVerticalChase()
+  clearChaseWalkDest()
   if g_game and g_game.cancelAttackAndFollow then
     pcall(function() g_game.cancelAttackAndFollow() end)
   end
@@ -184,48 +383,22 @@ local function doRecover()
   storage._target = name
   local c = knightFindLockedPlayer(name, true)
   storage._targetId = knightSafeCreatureId(c)
-  if c then safeAttack(c) end
+  if c then knightGameAttack(c) end
   knightFlashBtn(btnRecover)
 end
 btnRecover = addButton("btn_recover", "Recover Target [Shift+E]", doRecover)
 hotkey("Shift+E", doRecover)
 
-autoChaseMacro = macro(100, "Auto Chase", "2", function()
-  if knightChatOpen() then return end
-  if knightTrim(storage._target or "") == "" then return end
-
-  if g_game and g_game.getChaseMode and g_game.setChaseMode then
-    local okMode, m = pcall(function() return g_game.getChaseMode() end)
-    if okMode and m ~= 1 then pcall(function() g_game.setChaseMode(1) end) end
-  end
-
-  local target = knightFindLockedPlayer(storage._target, false)
-  if not target then
-    storage._targetId = 0
-    return
-  end
-
-  storage._targetId = knightSafeCreatureId(target)
-
-  if gameAttackReady() and throttle("chase_attack", CHASE_ATTACK_GAP_MS) then
-    safeAttack(target)
-  end
-
-  local tpOk, tp = pcall(function() return target:getPosition() end)
-  if not tpOk or not tp or not autoWalk then return end
-
-  local mp = pos()
-  if not mp then return end
-  local sameZ = (tp.z == mp.z)
-  local dist = sameZ and getDistanceBetween(mp, tp) or 999
-  if (not sameZ or dist > 1) and throttle("chase_walk", CHASE_WALK_GAP_MS) then
-    pcall(function()
-      autoWalk(tp, 20, { ignoreNonPathable = true, precision = 1 })
-    end)
-  end
-end)
-
 macro(150, function()
+  local on = autoChaseMacro and autoChaseMacro:isOn()
+  if on and not chaseWasOn then
+    clearVerticalChase()
+    clearChaseWalkDest()
+  elseif not on and chaseWasOn then
+    clearVerticalChase()
+    clearChaseWalkDest()
+  end
+  chaseWasOn = on and true or false
   storage._targetEnabled = knightMacroIsOn(autoTargetMacro)
-  storage._chaseEnabled = knightMacroIsOn(autoChaseMacro)
+  storage._chaseEnabled = on
 end)

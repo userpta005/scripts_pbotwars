@@ -1,7 +1,10 @@
 --[[
-  005_auto_haste.lua — Utani Tempo Hur quando não há haste activo.
+  005_auto_haste.lua — Utani Tempo Hur quando falta condição Haste.
 
-  Partilha prioridade com gauge, utamo, exeta, etc.
+  Usa `hasHaste` (PlayerStates.Haste via game_bot). Partilha prioridade global com 001.
+
+  Depende de: 001_storage_init.lua
+  PVE/PVP: essencial em movimento; respeita chat fechado para não falar no input.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}

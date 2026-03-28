@@ -1,10 +1,13 @@
--- [INICIO] 019_status_hud.lua
---
--- Objetivo: labels de estado vindos de `storage` (preenchido por 002, 011, 012, 018):
---   atacou-me, ataquei, alvo, follow, push e modo deduzido por prioridade.
+--[[
+  019_status_hud.lua — Painel de estado (storage alimentado por 002, 011, 012, push scripts, etc.).
 
--- Painel compacto: quem te bateu, alvo, follow, push e modo (idle/lock/chase/follow/push).
-storage = storage or {}
+  Linhas: último que te atacou, último alvo atacado, lock/chase, follow, push, modo derivado
+  por prioridade (push > follow > chase > lock > idle).
+
+  Depende de: 001_storage_init.lua (`knightEnsureStorage`, `knightTrim`).
+]]
+
+storage = (type(storage) == "table" and storage) or {}
 if knightEnsureStorage then
   knightEnsureStorage({
     lastAttackedMe = "",
@@ -21,8 +24,7 @@ if knightEnsureStorage then
 end
 
 local trim = knightTrim
-
--- Widgets do HUD (1 linha por indicador).
+local DIM = "#888888"
 local hud = {
   addLabel("k_h1", "Atacou-me: -"),
   addLabel("k_h2", "Ataquei: -"),
@@ -34,15 +36,12 @@ local hud = {
 
 local function setHud(i, text, color)
   pcall(function()
-    -- Atualiza texto e cor de uma linha especifica.
     hud[i]:setText(text)
-    hud[i]:setColor(color or "#aaaaaa")
+    hud[i]:setColor(color or DIM)
   end)
 end
 
--- Atualiza o painel periodicamente sem depender dos outros scripts em runtime.
 macro(280, function()
-  -- Snapshot do estado atual.
   local am = storage.lastAttackedMe or ""
   local la = storage.lastAttacked or ""
   local tgt = storage._target or ""
@@ -54,26 +53,25 @@ macro(280, function()
   local pushOn = storage._pushActive == true
   local pd = storage._pushDest
 
-  -- Converte vazio para "-" para leitura limpa.
   local function v(s) return s ~= "" and s or "-" end
-  setHud(1, "Atacou-me: " .. v(am), am ~= "" and "#ff6666" or "red")
-  setHud(2, "Ataquei: " .. v(la), la ~= "" and "#66ff66" or "red")
-  setHud(3, "Alvo: " .. (targetOn and v(tgt) or "-"), targetOn and "green" or "red")
-  setHud(4, "Follow: " .. (fOn and fl or "-"), fOn and "green" or "red")
-  -- Linha Push com destino detalhado quando disponivel.
-  if pv ~= "" and pd and pd.x and pd.y then
-    setHud(5, "Push: [" .. pv .. "] > " .. pd.x .. "," .. pd.y .. (pushOn and " [ON]" or ""), pushOn and "#88ff88" or "#ffaa00")
-  else
-    setHud(5, "Push: " .. (pv ~= "" and ("[" .. pv .. "]") or "-"), pv ~= "" and "#ffaa00" or "red")
-  end
-  -- Determina modo principal por prioridade operacional.
-  local mode = "Mode: idle"
-  if pushOn then mode = "Mode: push"
-  elseif fOn then mode = "Mode: follow"
-  elseif chaseOn and targetOn and tgt ~= "" then mode = "Mode: chase"
-  elseif targetOn and tgt ~= "" then mode = "Mode: lock"
-  end
-  setHud(6, mode, "#aaaaaa")
-end)
 
--- [FIM] 019_status_hud.lua
+  setHud(1, "Atacou-me: " .. v(am), am ~= "" and "#ff6666" or DIM)
+  setHud(2, "Ataquei: " .. v(la), la ~= "" and "#66ff66" or DIM)
+  setHud(3, "Alvo: " .. (targetOn and v(tgt) or "-"), targetOn and "#66ff66" or DIM)
+  setHud(4, "Follow: " .. (fOn and fl or "-"), fOn and "#66ccff" or DIM)
+
+  if pv ~= "" and pd and type(pd.x) == "number" and type(pd.y) == "number" then
+    setHud(5, "Push: [" .. pv .. "] > " .. pd.x .. "," .. pd.y .. (pushOn and " [ON]" or ""),
+        pushOn and "#88ff88" or "#ffaa00")
+  else
+    setHud(5, "Push: " .. (pv ~= "" and ("[" .. pv .. "]") or "-"), pv ~= "" and "#ffaa00" or DIM)
+  end
+
+  local mode, mc = "Mode: idle", DIM
+  if pushOn then mode, mc = "Mode: push", "#ffaa00"
+  elseif fOn then mode, mc = "Mode: follow", "#66ccff"
+  elseif chaseOn and targetOn and tgt ~= "" then mode, mc = "Mode: chase", "#88ff88"
+  elseif targetOn and tgt ~= "" then mode, mc = "Mode: lock", "#66ff66"
+  end
+  setHud(6, mode, mc)
+end)

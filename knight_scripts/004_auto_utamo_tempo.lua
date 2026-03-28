@@ -1,7 +1,11 @@
 --[[
-  004_auto_utamo_tempo.lua — Utamo Tempo só com haste já activo, sem mana shield nem party buff.
+  004_auto_utamo_tempo.lua — Utamo Tempo (mana shield).
 
-  Respeita `canCast` e o sistema de prioridade partilhado (001).
+  Exige haste activo (`hasHaste`); não recasta se já houver mana shield ou party buff. Partilha
+  slot e intervalo global com os restantes macros de suporte (001).
+
+  Depende de: 001_storage_init.lua
+  PVE/PVP: útil em ambos; em PVP verificar se o servidor permite stack com outros efeitos.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}

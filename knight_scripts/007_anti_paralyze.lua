@@ -1,9 +1,11 @@
 --[[
-  007_anti_paralyze.lua — Liberta paralisia com Utani Tempo Hur.
+  007_anti_paralyze.lua — Utani Tempo Hur para remover paralisia (prioridade máxima na fila 001).
 
-  Prioridade máxima no escalão de suporte: **não** exige chat fechado (PVP).
-  Não impõe `knightMsSinceSupportCast` antes do cast — paralisia é tratada como urgente;
-  após o cast actualiza o relógio partilhado para não soprar outros suportes logo a seguir.
+  Propósito PVP/PVE: reagir de imediato — não bloqueia por chat nem pelo gap global *antes* do
+  cast (só cooldown local + mana + `canCast`). Após `say`, `knightTouchSupportCast()` evita
+  colidir com outros suportes no mesmo tick.
+
+  Depende de: 001_storage_init.lua
 ]]
 
 storage = (type(storage) == "table" and storage) or {}

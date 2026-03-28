@@ -1,7 +1,10 @@
 --[[
-  006_exeta_res.lua — Exeta Res em melee (Chebyshev ≤ 1) ao alvo actual.
+  006_exeta_res.lua — Exeta Res em contacto (Chebyshev ≤ 1) com o alvo atacado.
 
-  Poupa mana se `manapercent()` estiver no limiar; monstro ou player (PVE/PVP).
+  Exige percentagem de mana mínima (evita exeta “seco”). Cooldown local + fila 001.
+
+  Depende de: 001_storage_init.lua (`knightAttackingPosition`, `manapercent`).
+  PVE/PVP: válido contra qualquer criatura atacada que esteja adjacente.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -15,7 +18,8 @@ local MIN_MANA_PCT = 30
 local function exetaReady()
   if knightChatOpen() then return false end
   local tp = knightAttackingPosition()
-  if not tp or getDistanceBetween(pos(), tp) > 1 then return false end
+  local mp = pos and pos() or nil
+  if not tp or not mp or getDistanceBetween(mp, tp) > 1 then return false end
   if manapercent and manapercent() <= MIN_MANA_PCT then return false end
   return knightSupportTimingAndSpellOk(SPELL, lastCast, GAP_MS, MIN_MANA)
 end

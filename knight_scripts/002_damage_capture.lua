@@ -1,10 +1,11 @@
 --[[
-  002_damage_capture.lua — Actualiza `storage` para HUD / rotas que precisam de nomes.
+  002_damage_capture.lua — Registo de nomes para HUD / Recover / Exiva.
 
-  - `lastAttackedMe`: quem originou dano recebido (log do cliente, vários idiomas).
-  - `lastAttacked`: nome da criatura que passou a ser alvo de ataque.
+  - storage.lastAttackedMe: último autor de dano recebido (parser EN/PT sobre o texto do cliente).
+  - storage.lastAttacked: nome da criatura quando o alvo de ataque do cliente muda.
 
-  Dependência: 001_storage_init.lua (`knightEnsureStorage`, `knightTrim`).
+  Depende de: 001_storage_init.lua (`knightTrim`, `knightEnsureStorage`).
+  PVE/PVP: mesmo fluxo; filtro por MessageModes.DamageReceived (= 22, gamelib const).
 ]]
 
 storage = (type(storage) == "table" and storage) or {}

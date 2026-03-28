@@ -1,11 +1,11 @@
 --[[
-  003_auto_exori_gauge.lua — Mantém Exori Gauge quando possível.
+  003_auto_exori_gauge.lua — Exori Gauge (buff de dano em knight).
 
-  - Não lança com party buff equivalente (`hasPartyBuff`).
-  - Partilha slot com outros suportes via `knightSupportShouldDefer` + `knightTouchSupportCast`.
-  - Em PVP/PVE: não dispara com chat aberto.
+  Regras: chat fechado, sem party buff activo, fila de suporte 001, cooldown local + global,
+  mana mínima e `canCast`. Tunáveis globais: KNIGHT_EXORI_GAUGE_SPELL, KNIGHT_EXORI_GAUGE_MIN_MANA.
 
-  Constantes globais opcionais: KNIGHT_EXORI_GAUGE_SPELL, KNIGHT_EXORI_GAUGE_MIN_MANA (001).
+  Depende de: 001_storage_init.lua
+  PVE/PVP: idem (party buff também cobre buffs de grupo em hunts).
 ]]
 
 storage = (type(storage) == "table" and storage) or {}

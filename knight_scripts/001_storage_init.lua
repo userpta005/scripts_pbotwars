@@ -1,10 +1,15 @@
 --[[
   001_storage_init.lua — Base do pacote knight_scripts (carregar sempre primeiro).
 
-  Alinhado a game_bot / OTClient v8: `now`, `say`, `canCast`, `g_game`, `macro`, `storage`,
-  `pos`, `player`, callbacks (`onTextMessage`, …). Ver `otclientv8/modules/game_bot/`.
+  Referência OTClient v8 (`otclientv8/modules/game_bot`): contexto expõe `say` (= g_game.talk),
+  `turn`, `pos`, `mana`, `canCast`, `macro`, `onTextMessage`, `getContainers`, condições em
+  `player_conditions.lua` (`hasHaste`, `isParalyzed`, `hasManaShield`, `hasPartyBuff`, …).
 
-  PVE/PVP: helpers de alvo funcionam com monstro ou player; ordem dos scripts pelo prefixo NNN_.
+  Convenção: prefixo `00N_*.lua` por ordem crescente. Helpers centralizam `pcall` contra APIs
+  C++ instáveis (mortes, logout, lag).
+
+  PVE/PVP: nomes de lock/correspondência trim + case-insensitive; distâncias em Chebyshev,
+  consistentes com `getDistanceBetween` do bot.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -31,7 +36,7 @@ KNIGHT_SUPPORT_PRIORITY_ORDER = KNIGHT_SUPPORT_PRIORITY_ORDER or {
 --- @type table<string, fun(): boolean> mapas `id` → função “quer cast agora” (registo por script).
 knightSupportPriorityClaims = knightSupportPriorityClaims or {}
 
---- @return number gap efectivo em ms
+--- @return number gap efetivo em ms
 function knightSupportGap()
   return KNIGHT_SUPPORT_CAST_GAP or 1500
 end
@@ -104,6 +109,14 @@ function knightNameMatchLock(lockName, creatureName)
   return string.lower(a) == string.lower(b)
 end
 
+--- Jogador em movimento (`player:isWalking`), com `pcall`.
+--- @return boolean
+function knightIsWalking()
+  if not player or not player.isWalking then return false end
+  local ok, w = pcall(function() return player:isWalking() end)
+  return ok and w == true
+end
+
 --- Flash visual breve em botão (opcional `schedule` do bot).
 --- @param b userdata|nil
 function knightFlashBtn(b)
@@ -112,6 +125,32 @@ function knightFlashBtn(b)
   if schedule then
     schedule(500, function() pcall(function() b:setImageColor("white") end) end)
   end
+end
+
+--- `g_map.getTile` + `getTopUseThing` + `g_game.use` (escadas, alavancas, etc.).
+--- @param x number
+--- @param y number
+--- @param z number
+function knightMapUseTopThing(x, y, z)
+  if not g_map or not g_map.getTile or not g_game or not g_game.use then return end
+  pcall(function()
+    local tile = g_map.getTile({ x = x, y = y, z = z })
+    local top = tile and tile:getTopUseThing()
+    if top then g_game.use(top) end
+  end)
+end
+
+--- @return boolean
+function knightGameAttackReady()
+  local g = g_game
+  return not not (g and g.isAttacking and g.getAttackingCreature and g.attack)
+end
+
+--- `g_game.attack(creature)` sem rebentar se o cliente estiver incompleto.
+--- @param creature userdata|nil
+function knightGameAttack(creature)
+  if not creature or not knightGameAttackReady() then return end
+  pcall(function() g_game.attack(creature) end)
 end
 
 --- Chat de texto activo (não spam de spell ao escrever).
@@ -227,6 +266,23 @@ function knightFindLockedPlayer(lockName, sameFloorOnly)
   return nil
 end
 
+--- Jogador visível em qualquer andar pelo nome (exani / degraus / follow & chase).
+--- @param lockName string|nil
+--- @return userdata|nil
+function knightSeePlayerByNameAnywhere(lockName)
+  local n = knightTrim(lockName or "")
+  if n == "" then return nil end
+  if knightFindLockedPlayer then
+    local c = knightFindLockedPlayer(n, false)
+    if c then return c end
+  end
+  if getCreatureByName then
+    local ok, x = pcall(function() return getCreatureByName(n) end)
+    if ok and x then return x end
+  end
+  return nil
+end
+
 --- ID estável da criatura (0 se inválido).
 --- @param creature userdata|nil
 --- @return number
@@ -245,6 +301,14 @@ knightEnsureStorage({
   _chaseEnabled = false,
   followLeader = "",
   _followEnabled = false,
+  _followVerticalUntil = 0,
+  _followLadderFx = nil,
+  _followLadderFy = nil,
+  _followLadderFz = nil,
+  _chaseVerticalUntil = 0,
+  _chaseLadderFx = nil,
+  _chaseLadderFy = nil,
+  _chaseLadderFz = nil,
   pushVictimName = "",
   _pushActive = false,
   _pushDest = nil,

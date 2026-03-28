@@ -1,7 +1,9 @@
 --[[
-  010_auto_exori_strike.lua — Exori Strike com alvo adjacente (≤1 SQM), mesmo andar.
+  010_auto_exori_strike.lua — Exori Strike com alvo adjacente (≤ 1 sqm, mesmo Z).
 
-  Monstro ou player; integra slot de suporte e throttle global.
+  Depende de: 001_storage_init.lua (`knightAttackingCreature`, `knightTargetPosPair`,
+  fila de suporte).
+  PVE/PVP: só dispara com criatura atacada válida e dentro de melee.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}

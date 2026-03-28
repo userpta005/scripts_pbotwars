@@ -1,7 +1,11 @@
 --[[
-  008_anti_kick.lua — Rotação N→E→S→W para reduzir acumulação de kicks (PVP/OT).
+  008_anti_kick.lua — Rotação periódica do facing (N→E→S→W).
 
-  Pausa quando o chat está aberto. `turn(dir)` vem do contexto game_bot (`player.lua`).
+  Em alguns OTs reduz efeito de “kick”/empurrão posicional. Usa `turn` (= g_game.turn do bot).
+  Pausa se o chat de texto estiver activo.
+
+  Depende de: 001_storage_init.lua (`knightChatOpen`)
+  PVP: mais relevante; PVE: inofensivo se preferires desligar.
 ]]
 
 local ROTATE_MS = 680

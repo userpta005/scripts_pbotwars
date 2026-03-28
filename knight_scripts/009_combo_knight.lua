@@ -1,11 +1,12 @@
 --[[
-  009_combo_knight.lua — Mas Exori Hur no alvo em ataque, mesmo andar.
+  009_combo_knight.lua — Mas Exori Hur com alinhamento ao alvo em ataque (mesmo Z).
 
-  - Alinhamento: vira para o alvo (não diagonal “puro” sem virar).
-  - Diagonal adjacente: um passo lateral seguro (`autoWalk`) para ficar em cruz com o alvo.
-  - Após `turn`, pequeno atraso antes do cast (combat turn do servidor).
+  Se estiveres na diagonal “cruz” a um sqm, tenta passo lateral com `autoWalk` para ganhar
+  linha reta; caso contrário `turn` + pequeno atraso antes do cast. Regista prioridade
+  `mas_exori_hur` em 001.
 
-  Usa `g_map`, `player`, `autoWalk` (game_bot). Prioridade `mas_exori_hur` no sistema 001.
+  Depende de: 001_storage_init.lua, g_map para tiles livres.
+  PVE/PVP: mesmo algoritmo; evita cast quando ainda há passo lateral pendente.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -35,19 +36,15 @@ local function turnSteps(cur, want)
   return math.min(d, 4 - d)
 end
 
---- Casa lateral livre para passo em “L” relativamente ao alvo diagonal.
+--- Casa lateral livre para passo em “L” (diagonal ao alvo).
 local function tileOkForSideStep(p)
+  if not g_map or not g_map.getTile then return false end
+  local pid = player and knightSafeCreatureId(player) or 0
   local ok, walk = pcall(function()
     local tile = g_map.getTile(p)
     if not tile or not tile:isWalkable() then return false end
-    local pid = 0
-    if player then
-      local okp, id = pcall(function() return player:getId() end)
-      if okp and type(id) == "number" then pid = id end
-    end
     for _, c in ipairs(tile:getCreatures() or {}) do
-      local okc, cid = pcall(function() return c:getId() end)
-      if okc and cid ~= pid then return false end
+      if knightSafeCreatureId(c) ~= pid then return false end
     end
     return true
   end)
@@ -89,15 +86,13 @@ local function hurAlignedAndReady(t, tp, mp)
 end
 
 local function hurClaimsSupportSlot()
-  if type(storage) ~= "table" then return false end
   local t = knightAttackingCreature()
   if not t then return false end
   local tp, mp = knightTargetPosPair(t)
 
   if pendingUntil > 0 then
     if now < pendingUntil then return false end
-    local okId, tid = pcall(function() return t:getId() end)
-    if not okId or tid ~= pendingId then return false end
+    if knightSafeCreatureId(t) ~= pendingId then return false end
     if canCast and not canCast(SPELL) then return false end
     return true
   end
@@ -105,14 +100,17 @@ local function hurClaimsSupportSlot()
   return hurAlignedAndReady(t, tp, mp)
 end
 
-onAttackingCreatureChange(function()
+local function clearTurnPending()
   pendingUntil, pendingId = 0, 0
+end
+
+onAttackingCreatureChange(function()
+  clearTurnPending()
 end)
 
 knightMasExoriHurMacro = macro(180, "Mas Exori Hur", "Shift+5", function()
   if knightChatOpen() then return end
   if knightSupportShouldDefer("mas_exori_hur") then return end
-  if type(storage) ~= "table" then return end
 
   local t = knightAttackingCreature()
   if not t then return end
@@ -122,13 +120,12 @@ knightMasExoriHurMacro = macro(180, "Mas Exori Hur", "Shift+5", function()
 
   if pendingUntil > 0 then
     if now < pendingUntil then return end
-    local okId, tid = pcall(function() return t:getId() end)
-    if not okId or tid ~= pendingId then pendingUntil, pendingId = 0, 0 return end
-    if canCast and not canCast(SPELL) then pendingUntil, pendingId = 0, 0 return end
+    if knightSafeCreatureId(t) ~= pendingId then clearTurnPending() return end
+    if canCast and not canCast(SPELL) then clearTurnPending() return end
     say(SPELL)
     lastCast = now
     knightTouchSupportCast()
-    pendingUntil, pendingId = 0, 0
+    clearTurnPending()
     return
   end
 
@@ -137,7 +134,7 @@ knightMasExoriHurMacro = macro(180, "Mas Exori Hur", "Shift+5", function()
 
   local side = pickSideStep(mp, tp)
   if side then
-    if player.isWalking and player:isWalking() then return end
+    if knightIsWalking and knightIsWalking() then return end
     if (now - lastSideStep) < SIDE_STEP_GAP_MS then return end
     if autoWalk then
       autoWalk(side, 20, { ignoreNonPathable = true, precision = 1 })
@@ -152,8 +149,8 @@ knightMasExoriHurMacro = macro(180, "Mas Exori Hur", "Shift+5", function()
     pcall(function() cur = player:getDirection() end)
     if cur == nil or cur ~= want then
       pcall(function() turn(want) end)
-      local okId, tid = pcall(function() return t:getId() end)
-      if okId and tid then
+      local tid = knightSafeCreatureId(t)
+      if tid ~= 0 then
         pendingUntil = now + TURN_DELAY_MS
         pendingId = tid
       end
