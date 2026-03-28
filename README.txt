@@ -3,7 +3,7 @@ scripts_pbotwars — pacote knight_scripts (OTClient / game_bot)
 Scripts independentes extraidos de knight_scripts.lua
 
 Ordenacao dos ficheiros (prefixo NNN_ = tres digitos, ordem estavel no bot):
-  001_storage_init.lua  … 019_status_hud.lua
+  001_storage_init.lua  … 020_pvp_manual_mode.lua
 
 Padrao de qualidade:
 - um arquivo por funcionalidade principal
@@ -31,6 +31,7 @@ Arquivos e objetivo:
 - 017_anti_push.lua — anti-push moedas.
 - 018_push_control.lua — push assistido.
 - 019_status_hud.lua — painel de estado.
+- 020_pvp_manual_mode.lua — botao: desliga TargetBot/CaveBot/AttackBot (vBot) e liga Strike + Auto Target + Auto Chase.
 
 Opcional: antes de `001_storage_init.lua` definir `KNIGHT_SUPPORT_CAST_GAP` (padrao 1500 ms) e/ou
   `KNIGHT_SUPPORT_PRIORITY_ORDER` — array de IDs (ver comentario no 001): ordem = prioridade para `lastSupportCastAt`.

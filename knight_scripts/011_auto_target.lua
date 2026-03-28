@@ -402,3 +402,7 @@ macro(150, function()
   storage._targetEnabled = knightMacroIsOn(autoTargetMacro)
   storage._chaseEnabled = on
 end)
+
+--- Referências para `020_pvp_manual_mode.lua` (ligar macros por código).
+knightAutoTargetMacro = autoTargetMacro
+knightAutoChaseMacro = autoChaseMacro
