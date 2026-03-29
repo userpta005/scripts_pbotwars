@@ -1,9 +1,9 @@
 --[[
   005_auto_haste.lua — Utani Tempo Hur quando falta condição Haste.
 
-  Usa `hasHaste` (PlayerStates.Haste via game_bot). Partilha prioridade global com 001.
+  Usa `hasHaste` (PlayerStates.Haste via game_bot). Partilha prioridade global com 002.
 
-  Depende de: 001_storage_init.lua
+  Depende de: 002_storage_init.lua
   PVE/PVP: essencial em movimento; respeita chat fechado para não falar no input.
 ]]
 

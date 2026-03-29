@@ -1,10 +1,11 @@
 --[[
-  019_status_hud.lua — Painel de estado (storage alimentado por 002, 011, 012, push scripts, etc.).
+  020_status_hud.lua — Painel de estado (storage alimentado por 003, 012, 013, push scripts, etc.).
 
   Linhas: último que te atacou, último alvo atacado, lock/chase, follow, push, modo derivado
   por prioridade (push > follow > chase > lock > idle).
 
-  Depende de: 001_storage_init.lua (`knightEnsureStorage`, `knightTrim`).
+  No pack ordenado: último script (depois de `019_exiva.lua`).
+  Depende de: 002_storage_init.lua (`knightEnsureStorage`, `knightTrim`).
 ]]
 
 storage = (type(storage) == "table" and storage) or {}

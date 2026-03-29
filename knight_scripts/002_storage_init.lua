@@ -1,5 +1,8 @@
 --[[
-  001_storage_init.lua — Base do pacote knight_scripts (carregar sempre primeiro).
+  002_storage_init.lua — Base do pacote knight_scripts (helpers + `storage`).
+
+  No pack ordenado, vem logo a seguir a `001_pvp_manual_mode.lua` (só regista UI; este ficheiro
+  define funções usadas pelo resto). Sem o 001, podes carregar este como primeiro script.
 
   Referência OTClient v8 (`otclientv8/modules/game_bot`): contexto expõe `say` (= g_game.talk),
   `turn`, `pos`, `mana`, `canCast`, `macro`, `onTextMessage`, `getContainers`, condições em
@@ -18,7 +21,7 @@ storage = (type(storage) == "table" and storage) or {}
 --- exeta, anti-paralyze, mas hur, strike). Evita colisão no mesmo “slot” de grupo/recarga.
 KNIGHT_SUPPORT_CAST_GAP = KNIGHT_SUPPORT_CAST_GAP or 1500
 
---- Spell e mana mínima para o macro 003.
+--- Spell e mana mínima para o macro 004_auto_exori_gauge.
 KNIGHT_EXORI_GAUGE_SPELL = KNIGHT_EXORI_GAUGE_SPELL or "exori gauge"
 KNIGHT_EXORI_GAUGE_MIN_MANA = KNIGHT_EXORI_GAUGE_MIN_MANA or 400
 

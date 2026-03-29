@@ -1,21 +1,71 @@
 --[[
-  knight_all_in_one_EXCLUDED_008_015_018.lua
+  knight_all_in_one_EXCLUDED_009_015_018.lua
 
-  Monolito para copiar/colar no game_bot (OTClient v8). Conteúdo = todos os
-  knight_scripts na ordem 001→020, EXCETO:
-    - 008_anti_kick.lua
+  Monolito para copiar/colar no game_bot (OTClient v8). Ordem = perfil ordenado:
+    001 PVP manual, 002–018 núcleo, 019 exiva, 020 status HUD.
+  EXCETO (não incluídos neste ficheiro):
+    - 009_anti_kick.lua
     - 015_id_cursor_map.lua
     - 018_push_control.lua
 
-  Para voltar aos ficheiros separados, usa a pasta knight_scripts/.
+  Para ficheiros separados, ver knight_scripts/.
 ]]
 
 
 
--- ========== 001_storage_init.lua ==========
+-- ========== 001_pvp_manual_mode.lua ==========
 
 --[[
-  001_storage_init.lua — Base do pacote knight_scripts (carregar sempre primeiro).
+  001_pvp_manual_mode.lua — Um clique: desliga TargetBot/CaveBot/AttackBot (vBot) e liga
+  Auto Exori Strike, Auto Target e Auto Chase (knight_scripts).
+
+  Carregar primeiro no perfil: só regista o botão; ao clicar resolve as macros globalmente.
+
+  Depende de (macros ao clicar): 011_auto_exori_strike.lua, 012_auto_target.lua (`knightExoriStrikeMacro`,
+  `knightAutoTargetMacro`, `knightAutoChaseMacro`). Se vBot não estiver carregado, os `setOff`
+  são ignorados em segurança.
+]]
+
+local function safeCall(fn)
+  if type(fn) ~= "function" then return end
+  pcall(fn)
+end
+
+local function modoPvpManual()
+  if type(TargetBot) == "table" and type(TargetBot.setOff) == "function" then
+    safeCall(function() TargetBot.setOff() end)
+  end
+  if type(CaveBot) == "table" and type(CaveBot.setOff) == "function" then
+    safeCall(function() CaveBot.setOff() end)
+  end
+  if type(AttackBot) == "table" and type(AttackBot.setOff) == "function" then
+    safeCall(function() AttackBot.setOff() end)
+  end
+
+  if knightExoriStrikeMacro and knightExoriStrikeMacro.setOn then
+    safeCall(function() knightExoriStrikeMacro:setOn() end)
+  end
+  if knightAutoTargetMacro and knightAutoTargetMacro.setOn then
+    safeCall(function() knightAutoTargetMacro:setOn() end)
+  end
+  if knightAutoChaseMacro and knightAutoChaseMacro.setOn then
+    safeCall(function() knightAutoChaseMacro:setOn() end)
+  end
+end
+
+local btnPvpManual = addButton("btn_pvp_manual", "Modo PVP manual (bots off)", function()
+  modoPvpManual()
+  if knightFlashBtn then knightFlashBtn(btnPvpManual) end
+end)
+
+
+-- ========== 002_storage_init.lua ==========
+
+--[[
+  002_storage_init.lua — Base do pacote knight_scripts (helpers + `storage`).
+
+  No pack ordenado, vem logo a seguir a `001_pvp_manual_mode.lua` (só regista UI; este ficheiro
+  define funções usadas pelo resto). Sem o 001, podes carregar este como primeiro script.
 
   Referência OTClient v8 (`otclientv8/modules/game_bot`): contexto expõe `say` (= g_game.talk),
   `turn`, `pos`, `mana`, `canCast`, `macro`, `onTextMessage`, `getContainers`, condições em
@@ -34,7 +84,7 @@ storage = (type(storage) == "table" and storage) or {}
 --- exeta, anti-paralyze, mas hur, strike). Evita colisão no mesmo “slot” de grupo/recarga.
 KNIGHT_SUPPORT_CAST_GAP = KNIGHT_SUPPORT_CAST_GAP or 1500
 
---- Spell e mana mínima para o macro 003.
+--- Spell e mana mínima para o macro 004_auto_exori_gauge.
 KNIGHT_EXORI_GAUGE_SPELL = KNIGHT_EXORI_GAUGE_SPELL or "exori gauge"
 KNIGHT_EXORI_GAUGE_MIN_MANA = KNIGHT_EXORI_GAUGE_MIN_MANA or 400
 
@@ -337,15 +387,15 @@ knightEnsureStorage({
 })
 
 
--- ========== 002_damage_capture.lua ==========
+-- ========== 003_damage_capture.lua ==========
 
 --[[
-  002_damage_capture.lua — Registo de nomes para HUD / Recover / Exiva.
+  003_damage_capture.lua — Registo de nomes para HUD / Recover / Exiva.
 
   - storage.lastAttackedMe: último autor de dano recebido (parser EN/PT sobre o texto do cliente).
   - storage.lastAttacked: nome da criatura quando o alvo de ataque do cliente muda.
 
-  Depende de: 001_storage_init.lua (`knightTrim`, `knightEnsureStorage`).
+  Depende de: 002_storage_init.lua (`knightTrim`, `knightEnsureStorage`).
   PVE/PVP: mesmo fluxo; filtro por MessageModes.DamageReceived (= 22, gamelib const).
 ]]
 
@@ -391,15 +441,15 @@ onAttackingCreatureChange(function(creature, oldCreature)
 end)
 
 
--- ========== 003_auto_exori_gauge.lua ==========
+-- ========== 004_auto_exori_gauge.lua ==========
 
 --[[
-  003_auto_exori_gauge.lua — Exori Gauge (buff de dano em knight).
+  004_auto_exori_gauge.lua — Exori Gauge (buff de dano em knight).
 
-  Regras: chat fechado, sem party buff activo, fila de suporte 001, cooldown local + global,
+  Regras: chat fechado, sem party buff activo, fila de suporte 002, cooldown local + global,
   mana mínima e `canCast`. Tunáveis globais: KNIGHT_EXORI_GAUGE_SPELL, KNIGHT_EXORI_GAUGE_MIN_MANA.
 
-  Depende de: 001_storage_init.lua
+  Depende de: 002_storage_init.lua
   PVE/PVP: idem (party buff também cobre buffs de grupo em hunts).
 ]]
 
@@ -430,15 +480,15 @@ knightSupportPriorityRegister("exori_gauge", function()
 end)
 
 
--- ========== 004_auto_utamo_tempo.lua ==========
+-- ========== 005_auto_utamo_tempo.lua ==========
 
 --[[
   004_auto_utamo_tempo.lua — Utamo Tempo (mana shield).
 
   Exige haste activo (`hasHaste`); não recasta se já houver mana shield ou party buff. Partilha
-  slot e intervalo global com os restantes macros de suporte (001).
+  slot e intervalo global com os restantes macros de suporte (002).
 
-  Depende de: 001_storage_init.lua
+  Depende de: 002_storage_init.lua
   PVE/PVP: útil em ambos; em PVP verificar se o servidor permite stack com outros efeitos.
 ]]
 
@@ -470,14 +520,14 @@ knightSupportPriorityRegister("utamo_tempo", function()
 end)
 
 
--- ========== 005_auto_haste.lua ==========
+-- ========== 006_auto_haste.lua ==========
 
 --[[
   005_auto_haste.lua — Utani Tempo Hur quando falta condição Haste.
 
-  Usa `hasHaste` (PlayerStates.Haste via game_bot). Partilha prioridade global com 001.
+  Usa `hasHaste` (PlayerStates.Haste via game_bot). Partilha prioridade global com 002.
 
-  Depende de: 001_storage_init.lua
+  Depende de: 002_storage_init.lua
   PVE/PVP: essencial em movimento; respeita chat fechado para não falar no input.
 ]]
 
@@ -508,14 +558,14 @@ knightSupportPriorityRegister("haste", function()
 end)
 
 
--- ========== 006_exeta_res.lua ==========
+-- ========== 007_exeta_res.lua ==========
 
 --[[
   006_exeta_res.lua — Exeta Res em contacto (Chebyshev ≤ 1) com o alvo atacado.
 
-  Exige percentagem de mana mínima (evita exeta “seco”). Cooldown local + fila 001.
+  Exige percentagem de mana mínima (evita exeta “seco”). Cooldown local + fila 002.
 
-  Depende de: 001_storage_init.lua (`knightAttackingPosition`, `manapercent`).
+  Depende de: 002_storage_init.lua (`knightAttackingPosition`, `manapercent`).
   PVE/PVP: válido contra qualquer criatura atacada que esteja adjacente.
 ]]
 
@@ -550,16 +600,16 @@ knightSupportPriorityRegister("exeta_res", function()
 end)
 
 
--- ========== 007_anti_paralyze.lua ==========
+-- ========== 008_anti_paralyze.lua ==========
 
 --[[
-  007_anti_paralyze.lua — Utani Tempo Hur para remover paralisia (prioridade máxima na fila 001).
+  008_anti_paralyze.lua — Utani Tempo Hur para remover paralisia (prioridade máxima na fila 002).
 
   Propósito PVP/PVE: reagir de imediato — não bloqueia por chat nem pelo gap global *antes* do
   cast (só cooldown local + mana + `canCast`). Após `say`, `knightTouchSupportCast()` evita
   colidir com outros suportes no mesmo tick.
 
-  Depende de: 001_storage_init.lua
+  Depende de: 002_storage_init.lua
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -591,16 +641,16 @@ knightSupportPriorityRegister("anti_paralyze", function()
 end)
 
 
--- ========== 009_combo_knight.lua ==========
+-- ========== 010_combo_knight.lua ==========
 
 --[[
   009_combo_knight.lua — Mas Exori Hur com alinhamento ao alvo em ataque (mesmo Z).
 
   Se estiveres na diagonal “cruz” a um sqm, tenta passo lateral com `autoWalk` para ganhar
   linha reta; caso contrário `turn` + pequeno atraso antes do cast. Regista prioridade
-  `mas_exori_hur` em 001.
+  `mas_exori_hur` em 002 (storage_init).
 
-  Depende de: 001_storage_init.lua, g_map para tiles livres.
+  Depende de: 002_storage_init.lua, g_map para tiles livres.
   PVE/PVP: mesmo algoritmo; evita cast quando ainda há passo lateral pendente.
 ]]
 
@@ -766,12 +816,12 @@ knightSupportPriorityRegister("mas_exori_hur", function()
 end)
 
 
--- ========== 010_auto_exori_strike.lua ==========
+-- ========== 011_auto_exori_strike.lua ==========
 
 --[[
   010_auto_exori_strike.lua — Exori Strike com alvo adjacente (≤ 1 sqm, mesmo Z).
 
-  Depende de: 001_storage_init.lua (`knightAttackingCreature`, `knightTargetPosPair`,
+  Depende de: 002_storage_init.lua (`knightAttackingCreature`, `knightTargetPosPair`,
   fila de suporte).
   PVE/PVP: só dispara com criatura atacada válida e dentro de melee.
 ]]
@@ -807,17 +857,17 @@ knightSupportPriorityRegister("exori_strike", function()
 end)
 
 
--- ========== 011_auto_target.lua ==========
+-- ========== 012_auto_target.lua ==========
 
 --[[
-  011_auto_target.lua — Lock de alvo PVP + Auto Chase.
+  012_auto_target.lua — Lock de alvo PVP + Auto Chase.
 
   - Auto Target (Shift+Q): mantém `g_game.attack` no jogador lockado no mesmo piso.
-  - Auto Chase (2): força chase mode 1 e replica a lógica vertical de 012 (passos, escadas,
+  - Auto Chase (2): força chase mode 1 e replica a lógica vertical de 013_follow (passos, escadas,
     `knightMapUseTopThing`, janela `_chaseVerticalUntil`, exani tera). Estado em `storage._chase*`.
 
-  Não ligar em simultâneo com 012 Follow PVP (_chase* vs _follow*).
-  Depende de: 001_storage_init.lua, 002 recomendado (lastAttacked).
+  Não ligar em simultâneo com 013 Follow PVP (_chase* vs _follow*).
+  Depende de: 002_storage_init.lua, 003 recomendado (lastAttacked).
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -835,7 +885,7 @@ if knightEnsureStorage then
   })
 end
 
--- Mesmos valores que 012_follow.lua (manter alinhados ao mudar um dos ficheiros).
+-- Mesmos valores que 013_follow.lua (manter alinhados ao mudar um dos ficheiros).
 local CHASE_POLL_MS = 85
 local CHASE_WALK_GAP_MS = 145
 local SAME_FLOOR_COMFORT_DIST = 2
@@ -955,7 +1005,7 @@ local function tryExaniChaseTera()
   if say then pcall(function() say("exani tera") end) end
 end
 
---- Alvo lock: mesma ideia que `onCreaturePositionChange` do 012 (sem ramo same-Z).
+--- Alvo lock: mesma ideia que `onCreaturePositionChange` do 013_follow (sem ramo same-Z).
 local function onChaseTargetMoved(creature, newPos, oldPos)
   if not creature or not oldPos then return end
   local nOk, cname = pcall(function() return creature:getName() end)
@@ -1214,23 +1264,23 @@ macro(150, function()
   storage._chaseEnabled = on
 end)
 
---- Referências para `020_pvp_manual_mode.lua` (ligar macros por código).
+--- Referências para `001_pvp_manual_mode.lua` (ligar macros por código).
 knightAutoTargetMacro = autoTargetMacro
 knightAutoChaseMacro = autoChaseMacro
 
 
--- ========== 012_follow.lua ==========
+-- ========== 013_follow.lua ==========
 
 --[[
-  012_follow.lua — Follow PVP (só caminha; não mantém attack no líder).
+  013_follow.lua — Follow PVP (só caminha; não mantém attack no líder).
 
   Com a macro ligada, o próximo player atacado passa a ser `followLeader`. Perseguição por
   `autoWalk`; mudança de Z só após `onCreaturePositionChange` do líder (pé guardado em
-  `storage._followLadder*`). Uses em sqm adjacentes ao follower via `knightMapUseTopThing` (001).
+  `storage._followLadder*`). Uses em sqm adjacentes ao follower via `knightMapUseTopThing` (002).
   Não abre portas no mesmo plano por design.
 
-  Não usar com 011 Auto Chase activo (lógica duplicada: _follow* vs _chase*).
-  Depende de: 001_storage_init.lua
+  Não usar com 012 Auto Chase activo (lógica duplicada: _follow* vs _chase*).
+  Depende de: 002_storage_init.lua
 ]]
 storage = (type(storage) == "table" and storage) or {}
 if knightEnsureStorage then
@@ -1586,16 +1636,183 @@ end)
 
 
 
--- ========== 013_exiva.lua ==========
+-- ========== 014_bugmap.lua ==========
 
 --[[
-  013_exiva.lua — Exiva, etiqueta de estado e grelha de runa (direcção).
+  014_bugmap.lua — “Bug map”: use em linha na direcção das teclas WASD/QEZC.
+
+  Lê teclas via `modules.corelib.g_keyboard` (isKeyPressed). Usa `knightMapUseTopThing` no pé e
+  ao longo do vector até ao comprimento do offset (máx 5 passos por eixo).
+
+  Depende de: 002_storage_init.lua (`knightChatOpen`, `knightMapUseTopThing`).
+  PVE/PVP: cuidado em PVP (uses visíveis); mesmo comportamento técnico.
+]]
+
+local BUG_DIRS = {
+  w = { 0, -5 }, e = { 3, -3 }, d = { 5, 0 }, c = { 3, 3 },
+  s = { 0, 5 }, z = { -3, 3 }, a = { -5, 0 }, q = { -3, -3 },
+}
+
+macro(50, "BugMap", "Shift+T", function()
+  if knightChatOpen and knightChatOpen() then return end
+  local k = modules.corelib and modules.corelib.g_keyboard
+  if not k or not k.isKeyPressed then return end
+
+  local dx, dy
+  for key, dir in pairs(BUG_DIRS) do
+    if k.isKeyPressed(key) then
+      dx, dy = dir[1], dir[2]
+      break
+    end
+  end
+  if not dx then return end
+
+  local mp = pos and pos() or nil
+  if not mp then return end
+
+  knightMapUseTopThing(mp.x, mp.y, mp.z)
+  local steps = math.max(math.abs(dx), math.abs(dy))
+  local sx = dx == 0 and 0 or (dx > 0 and 1 or -1)
+  local sy = dy == 0 and 0 or (dy > 0 and 1 or -1)
+  for i = 1, steps do
+    knightMapUseTopThing(mp.x + sx * i, mp.y + sy * i, mp.z)
+  end
+end)
+
+
+-- ========== 016_pull_items.lua ==========
+
+--[[
+  016_pull_items.lua — Puxar itens dos 8 sqm vizinhos para o pé (2 direções por tick).
+
+  Considera pickupable ou não “NotMoveable” (API do item). Usa `g_game.move`; só quando parado.
+
+  Depende de: 002_storage_init.lua (`knightChatOpen`, `knightIsWalking`).
+  PVE: útil para loot no chão; PVP: pode ser lento — desliga se não quiseres o ruído.
+]]
+
+local PD = {
+  { -1, -1 }, { 0, -1 }, { 1, -1 }, { 1, 0 }, { 1, 1 }, { 0, 1 }, { -1, 1 }, { -1, 0 },
+}
+local pullTick = 0
+
+local function itemCanPull(item)
+  if not item then return false end
+  local ok, pick = pcall(function() return item:isPickupable() end)
+  if ok and pick then return true end
+  ok, pick = pcall(function()
+    return item.isNotMoveable and not item:isNotMoveable()
+  end)
+  return ok and pick == true
+end
+
+macro(260, "Puxar Itens", "Shift+F", function()
+  if knightChatOpen and knightChatOpen() then return end
+  if knightIsWalking and knightIsWalking() then return end
+  if not g_map or not g_map.getTile or not g_game or not g_game.move then return end
+
+  local mp = pos and pos() or nil
+  if not mp then return end
+
+  pullTick = pullTick + 1
+  for off = 0, 1 do
+    local idx = ((pullTick - 1 + off) % #PD) + 1
+    local d = PD[idx]
+    local ok, tile = pcall(function()
+      return g_map.getTile({ x = mp.x + d[1], y = mp.y + d[2], z = mp.z })
+    end)
+    if ok and tile then
+      local items = tile.getItems and tile:getItems() or {}
+      for _, item in ipairs(items) do
+        if itemCanPull(item) then
+          local cnt = 1
+          pcall(function() cnt = item:getCount() end)
+          pcall(function() g_game.move(item, mp, cnt) end)
+          return
+        end
+      end
+    end
+  end
+end)
+
+
+-- ========== 017_anti_push.lua ==========
+
+--[[
+  017_anti_push.lua — Encher o tile do pé com moedas (alterna gold/platinum) ou usar crystal coin.
+
+  Objectivo: reduz empurrões em alguns servidores. Limite de stacks visíveis no tile para evitar
+  spam. Só corre quando parado; inventário via `getContainers()` do bot.
+
+  Depende de: 002_storage_init.lua (`knightChatOpen`, `knightIsWalking`).
+  PVP: ATENÇÃO — deixa lixo no chão e gasta recursos; avalia risco.
+]]
+
+local ITEM_GOLD, ITEM_PLAT, ITEM_CRYSTAL = 3031, 3035, 3043
+local TILE_MAX_STACKS = 8
+
+local dropGold = true
+
+macro(420, "Anti Push", "Shift+G", function()
+  if knightChatOpen and knightChatOpen() then return end
+  if knightIsWalking and knightIsWalking() then return end
+  if not g_map or not g_map.getTile or not g_game or not g_game.move or not g_game.use then return end
+
+  local mp = pos and pos() or nil
+  if not mp then return end
+
+  local ok, tile = pcall(function() return g_map.getTile(mp) end)
+  if not ok or not tile then return end
+  local items = tile.getItems and tile:getItems() or {}
+  if #items >= TILE_MAX_STACKS then return end
+
+  local gold, plat, crystal
+  if getContainers then
+    local cOk, containers = pcall(getContainers)
+    if cOk and type(containers) == "table" then
+      for _, c in pairs(containers) do
+        if c and c.getItems then
+          for _, item in ipairs(c:getItems() or {}) do
+            local idOk, id = pcall(function() return item:getId() end)
+            if idOk and type(id) == "number" then
+              if id == ITEM_GOLD and not gold then gold = item
+              elseif id == ITEM_PLAT and not plat then plat = item
+              elseif id == ITEM_CRYSTAL and not crystal then crystal = item
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  local function moveOne(it, nextDropGold)
+    pcall(function() g_game.move(it, mp, 1) end)
+    dropGold = nextDropGold
+  end
+
+  if dropGold then
+    if gold then moveOne(gold, false) return end
+    if plat then pcall(function() g_game.use(plat) end) return end
+    if crystal then pcall(function() g_game.use(crystal) end) return end
+  else
+    if plat then moveOne(plat, true) return end
+    if crystal then pcall(function() g_game.use(crystal) end) return end
+  end
+end)
+
+
+-- ========== 019_exiva.lua ==========
+
+--[[
+  019_exiva.lua — Exiva, etiqueta de estado e grelha de runa (direcção).
 
   Dispara `say('exiva "nome"')` a partir do nome manual em storage ou do último alvo player
-  (002 / criatura em attack). `onTextMessage` filtra Game + Look, cruza com lastExivaName e
+  (003_damage_capture / criatura em attack). `onTextMessage` filtra Game + Look, cruza com lastExivaName e
   janela temporal para preencher storage + UI.
 
-  Depende de: 001_storage_init.lua, 002 recomendado.
+  No pack ordenado: penúltimo script antes do HUD (`020_status_hud.lua`).
+  Depende de: 002_storage_init.lua, 003 recomendado.
   PVE/PVP: Exiva útil sobretudo em PVP; parsing tolera EN e PT comuns.
 ]]
 
@@ -2011,181 +2228,16 @@ macro(200, function()
 end)
 
 
--- ========== 014_bugmap.lua ==========
+-- ========== 020_status_hud.lua ==========
 
 --[[
-  014_bugmap.lua — “Bug map”: use em linha na direcção das teclas WASD/QEZC.
-
-  Lê teclas via `modules.corelib.g_keyboard` (isKeyPressed). Usa `knightMapUseTopThing` no pé e
-  ao longo do vector até ao comprimento do offset (máx 5 passos por eixo).
-
-  Depende de: 001_storage_init.lua (`knightChatOpen`, `knightMapUseTopThing`).
-  PVE/PVP: cuidado em PVP (uses visíveis); mesmo comportamento técnico.
-]]
-
-local BUG_DIRS = {
-  w = { 0, -5 }, e = { 3, -3 }, d = { 5, 0 }, c = { 3, 3 },
-  s = { 0, 5 }, z = { -3, 3 }, a = { -5, 0 }, q = { -3, -3 },
-}
-
-macro(50, "BugMap", "Shift+T", function()
-  if knightChatOpen and knightChatOpen() then return end
-  local k = modules.corelib and modules.corelib.g_keyboard
-  if not k or not k.isKeyPressed then return end
-
-  local dx, dy
-  for key, dir in pairs(BUG_DIRS) do
-    if k.isKeyPressed(key) then
-      dx, dy = dir[1], dir[2]
-      break
-    end
-  end
-  if not dx then return end
-
-  local mp = pos and pos() or nil
-  if not mp then return end
-
-  knightMapUseTopThing(mp.x, mp.y, mp.z)
-  local steps = math.max(math.abs(dx), math.abs(dy))
-  local sx = dx == 0 and 0 or (dx > 0 and 1 or -1)
-  local sy = dy == 0 and 0 or (dy > 0 and 1 or -1)
-  for i = 1, steps do
-    knightMapUseTopThing(mp.x + sx * i, mp.y + sy * i, mp.z)
-  end
-end)
-
-
--- ========== 016_pull_items.lua ==========
-
---[[
-  016_pull_items.lua — Puxar itens dos 8 sqm vizinhos para o pé (2 direções por tick).
-
-  Considera pickupable ou não “NotMoveable” (API do item). Usa `g_game.move`; só quando parado.
-
-  Depende de: 001_storage_init.lua (`knightChatOpen`, `knightIsWalking`).
-  PVE: útil para loot no chão; PVP: pode ser lento — desliga se não quiseres o ruído.
-]]
-
-local PD = {
-  { -1, -1 }, { 0, -1 }, { 1, -1 }, { 1, 0 }, { 1, 1 }, { 0, 1 }, { -1, 1 }, { -1, 0 },
-}
-local pullTick = 0
-
-local function itemCanPull(item)
-  if not item then return false end
-  local ok, pick = pcall(function() return item:isPickupable() end)
-  if ok and pick then return true end
-  ok, pick = pcall(function()
-    return item.isNotMoveable and not item:isNotMoveable()
-  end)
-  return ok and pick == true
-end
-
-macro(260, "Puxar Itens", "Shift+F", function()
-  if knightChatOpen and knightChatOpen() then return end
-  if knightIsWalking and knightIsWalking() then return end
-  if not g_map or not g_map.getTile or not g_game or not g_game.move then return end
-
-  local mp = pos and pos() or nil
-  if not mp then return end
-
-  pullTick = pullTick + 1
-  for off = 0, 1 do
-    local idx = ((pullTick - 1 + off) % #PD) + 1
-    local d = PD[idx]
-    local ok, tile = pcall(function()
-      return g_map.getTile({ x = mp.x + d[1], y = mp.y + d[2], z = mp.z })
-    end)
-    if ok and tile then
-      local items = tile.getItems and tile:getItems() or {}
-      for _, item in ipairs(items) do
-        if itemCanPull(item) then
-          local cnt = 1
-          pcall(function() cnt = item:getCount() end)
-          pcall(function() g_game.move(item, mp, cnt) end)
-          return
-        end
-      end
-    end
-  end
-end)
-
-
--- ========== 017_anti_push.lua ==========
-
---[[
-  017_anti_push.lua — Encher o tile do pé com moedas (alterna gold/platinum) ou usar crystal coin.
-
-  Objectivo: reduz empurrões em alguns servidores. Limite de stacks visíveis no tile para evitar
-  spam. Só corre quando parado; inventário via `getContainers()` do bot.
-
-  Depende de: 001_storage_init.lua (`knightChatOpen`, `knightIsWalking`).
-  PVP: ATENÇÃO — deixa lixo no chão e gasta recursos; avalia risco.
-]]
-
-local ITEM_GOLD, ITEM_PLAT, ITEM_CRYSTAL = 3031, 3035, 3043
-local TILE_MAX_STACKS = 8
-
-local dropGold = true
-
-macro(420, "Anti Push", "Shift+G", function()
-  if knightChatOpen and knightChatOpen() then return end
-  if knightIsWalking and knightIsWalking() then return end
-  if not g_map or not g_map.getTile or not g_game or not g_game.move or not g_game.use then return end
-
-  local mp = pos and pos() or nil
-  if not mp then return end
-
-  local ok, tile = pcall(function() return g_map.getTile(mp) end)
-  if not ok or not tile then return end
-  local items = tile.getItems and tile:getItems() or {}
-  if #items >= TILE_MAX_STACKS then return end
-
-  local gold, plat, crystal
-  if getContainers then
-    local cOk, containers = pcall(getContainers)
-    if cOk and type(containers) == "table" then
-      for _, c in pairs(containers) do
-        if c and c.getItems then
-          for _, item in ipairs(c:getItems() or {}) do
-            local idOk, id = pcall(function() return item:getId() end)
-            if idOk and type(id) == "number" then
-              if id == ITEM_GOLD and not gold then gold = item
-              elseif id == ITEM_PLAT and not plat then plat = item
-              elseif id == ITEM_CRYSTAL and not crystal then crystal = item
-              end
-            end
-          end
-        end
-      end
-    end
-  end
-
-  local function moveOne(it, nextDropGold)
-    pcall(function() g_game.move(it, mp, 1) end)
-    dropGold = nextDropGold
-  end
-
-  if dropGold then
-    if gold then moveOne(gold, false) return end
-    if plat then pcall(function() g_game.use(plat) end) return end
-    if crystal then pcall(function() g_game.use(crystal) end) return end
-  else
-    if plat then moveOne(plat, true) return end
-    if crystal then pcall(function() g_game.use(crystal) end) return end
-  end
-end)
-
-
--- ========== 019_status_hud.lua ==========
-
---[[
-  019_status_hud.lua — Painel de estado (storage alimentado por 002, 011, 012, push scripts, etc.).
+  020_status_hud.lua — Painel de estado (storage alimentado por 003, 012, 013, push scripts, etc.).
 
   Linhas: último que te atacou, último alvo atacado, lock/chase, follow, push, modo derivado
   por prioridade (push > follow > chase > lock > idle).
 
-  Depende de: 001_storage_init.lua (`knightEnsureStorage`, `knightTrim`).
+  No pack ordenado: último script (depois de `019_exiva.lua`).
+  Depende de: 002_storage_init.lua (`knightEnsureStorage`, `knightTrim`).
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -2255,48 +2307,4 @@ macro(280, function()
   elseif targetOn and tgt ~= "" then mode, mc = "Mode: lock", "#66ff66"
   end
   setHud(6, mode, mc)
-end)
-
-
--- ========== 020_pvp_manual_mode.lua ==========
-
---[[
-  020_pvp_manual_mode.lua — Um clique: desliga TargetBot/CaveBot/AttackBot (vBot) e liga
-  Auto Exori Strike, Auto Target e Auto Chase (knight_scripts).
-
-  Depende de: 010_auto_exori_strike.lua, 011_auto_target.lua (`knightExoriStrikeMacro`,
-  `knightAutoTargetMacro`, `knightAutoChaseMacro`). Se vBot não estiver carregado, os `setOff`
-  são ignorados em segurança.
-]]
-
-local function safeCall(fn)
-  if type(fn) ~= "function" then return end
-  pcall(fn)
-end
-
-local function modoPvpManual()
-  if type(TargetBot) == "table" and type(TargetBot.setOff) == "function" then
-    safeCall(function() TargetBot.setOff() end)
-  end
-  if type(CaveBot) == "table" and type(CaveBot.setOff) == "function" then
-    safeCall(function() CaveBot.setOff() end)
-  end
-  if type(AttackBot) == "table" and type(AttackBot.setOff) == "function" then
-    safeCall(function() AttackBot.setOff() end)
-  end
-
-  if knightExoriStrikeMacro and knightExoriStrikeMacro.setOn then
-    safeCall(function() knightExoriStrikeMacro:setOn() end)
-  end
-  if knightAutoTargetMacro and knightAutoTargetMacro.setOn then
-    safeCall(function() knightAutoTargetMacro:setOn() end)
-  end
-  if knightAutoChaseMacro and knightAutoChaseMacro.setOn then
-    safeCall(function() knightAutoChaseMacro:setOn() end)
-  end
-end
-
-local btnPvpManual = addButton("btn_pvp_manual", "Modo PVP manual (bots off)", function()
-  modoPvpManual()
-  if knightFlashBtn then knightFlashBtn(btnPvpManual) end
 end)

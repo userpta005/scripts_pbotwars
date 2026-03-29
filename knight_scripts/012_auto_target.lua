@@ -1,12 +1,12 @@
 --[[
-  011_auto_target.lua — Lock de alvo PVP + Auto Chase.
+  012_auto_target.lua — Lock de alvo PVP + Auto Chase.
 
   - Auto Target (Shift+Q): mantém `g_game.attack` no jogador lockado no mesmo piso.
-  - Auto Chase (2): força chase mode 1 e replica a lógica vertical de 012 (passos, escadas,
+  - Auto Chase (2): força chase mode 1 e replica a lógica vertical de 013_follow (passos, escadas,
     `knightMapUseTopThing`, janela `_chaseVerticalUntil`, exani tera). Estado em `storage._chase*`.
 
-  Não ligar em simultâneo com 012 Follow PVP (_chase* vs _follow*).
-  Depende de: 001_storage_init.lua, 002 recomendado (lastAttacked).
+  Não ligar em simultâneo com 013 Follow PVP (_chase* vs _follow*).
+  Depende de: 002_storage_init.lua, 003 recomendado (lastAttacked).
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -24,7 +24,7 @@ if knightEnsureStorage then
   })
 end
 
--- Mesmos valores que 012_follow.lua (manter alinhados ao mudar um dos ficheiros).
+-- Mesmos valores que 013_follow.lua (manter alinhados ao mudar um dos ficheiros).
 local CHASE_POLL_MS = 85
 local CHASE_WALK_GAP_MS = 145
 local SAME_FLOOR_COMFORT_DIST = 2
@@ -144,7 +144,7 @@ local function tryExaniChaseTera()
   if say then pcall(function() say("exani tera") end) end
 end
 
---- Alvo lock: mesma ideia que `onCreaturePositionChange` do 012 (sem ramo same-Z).
+--- Alvo lock: mesma ideia que `onCreaturePositionChange` do 013_follow (sem ramo same-Z).
 local function onChaseTargetMoved(creature, newPos, oldPos)
   if not creature or not oldPos then return end
   local nOk, cname = pcall(function() return creature:getName() end)
@@ -403,6 +403,6 @@ macro(150, function()
   storage._chaseEnabled = on
 end)
 
---- Referências para `020_pvp_manual_mode.lua` (ligar macros por código).
+--- Referências para `001_pvp_manual_mode.lua` (ligar macros por código).
 knightAutoTargetMacro = autoTargetMacro
 knightAutoChaseMacro = autoChaseMacro

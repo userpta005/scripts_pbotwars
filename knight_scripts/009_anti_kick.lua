@@ -1,10 +1,10 @@
 --[[
-  008_anti_kick.lua — Rotação periódica do facing (N→E→S→W).
+  009_anti_kick.lua — Rotação periódica do facing (N→E→S→W).
 
   Em alguns OTs reduz efeito de “kick”/empurrão posicional. Usa `turn` (= g_game.turn do bot).
   Pausa se o chat de texto estiver activo.
 
-  Depende de: 001_storage_init.lua (`knightChatOpen`)
+  Depende de: 002_storage_init.lua (`knightChatOpen`)
   PVP: mais relevante; PVE: inofensivo se preferires desligar.
 ]]
 

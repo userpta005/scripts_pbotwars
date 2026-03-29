@@ -3,7 +3,7 @@
 
   Considera pickupable ou não “NotMoveable” (API do item). Usa `g_game.move`; só quando parado.
 
-  Depende de: 001_storage_init.lua (`knightChatOpen`, `knightIsWalking`).
+  Depende de: 002_storage_init.lua (`knightChatOpen`, `knightIsWalking`).
   PVE: útil para loot no chão; PVP: pode ser lento — desliga se não quiseres o ruído.
 ]]
 

@@ -1,13 +1,13 @@
 --[[
-  012_follow.lua — Follow PVP (só caminha; não mantém attack no líder).
+  013_follow.lua — Follow PVP (só caminha; não mantém attack no líder).
 
   Com a macro ligada, o próximo player atacado passa a ser `followLeader`. Perseguição por
   `autoWalk`; mudança de Z só após `onCreaturePositionChange` do líder (pé guardado em
-  `storage._followLadder*`). Uses em sqm adjacentes ao follower via `knightMapUseTopThing` (001).
+  `storage._followLadder*`). Uses em sqm adjacentes ao follower via `knightMapUseTopThing` (002).
   Não abre portas no mesmo plano por design.
 
-  Não usar com 011 Auto Chase activo (lógica duplicada: _follow* vs _chase*).
-  Depende de: 001_storage_init.lua
+  Não usar com 012 Auto Chase activo (lógica duplicada: _follow* vs _chase*).
+  Depende de: 002_storage_init.lua
 ]]
 storage = (type(storage) == "table" and storage) or {}
 if knightEnsureStorage then

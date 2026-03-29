@@ -1,11 +1,11 @@
 --[[
-  007_anti_paralyze.lua — Utani Tempo Hur para remover paralisia (prioridade máxima na fila 001).
+  008_anti_paralyze.lua — Utani Tempo Hur para remover paralisia (prioridade máxima na fila 002).
 
   Propósito PVP/PVE: reagir de imediato — não bloqueia por chat nem pelo gap global *antes* do
   cast (só cooldown local + mana + `canCast`). Após `say`, `knightTouchSupportCast()` evita
   colidir com outros suportes no mesmo tick.
 
-  Depende de: 001_storage_init.lua
+  Depende de: 002_storage_init.lua
 ]]
 
 storage = (type(storage) == "table" and storage) or {}

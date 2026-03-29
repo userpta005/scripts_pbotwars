@@ -1,10 +1,10 @@
 --[[
-  003_auto_exori_gauge.lua — Exori Gauge (buff de dano em knight).
+  004_auto_exori_gauge.lua — Exori Gauge (buff de dano em knight).
 
-  Regras: chat fechado, sem party buff activo, fila de suporte 001, cooldown local + global,
+  Regras: chat fechado, sem party buff activo, fila de suporte 002, cooldown local + global,
   mana mínima e `canCast`. Tunáveis globais: KNIGHT_EXORI_GAUGE_SPELL, KNIGHT_EXORI_GAUGE_MIN_MANA.
 
-  Depende de: 001_storage_init.lua
+  Depende de: 002_storage_init.lua
   PVE/PVP: idem (party buff também cobre buffs de grupo em hunts).
 ]]
 

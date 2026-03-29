@@ -3,9 +3,9 @@
 
   Se estiveres na diagonal “cruz” a um sqm, tenta passo lateral com `autoWalk` para ganhar
   linha reta; caso contrário `turn` + pequeno atraso antes do cast. Regista prioridade
-  `mas_exori_hur` em 001.
+  `mas_exori_hur` em 002 (storage_init).
 
-  Depende de: 001_storage_init.lua, g_map para tiles livres.
+  Depende de: 002_storage_init.lua, g_map para tiles livres.
   PVE/PVP: mesmo algoritmo; evita cast quando ainda há passo lateral pendente.
 ]]
 

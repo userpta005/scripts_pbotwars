@@ -1,11 +1,12 @@
 --[[
-  013_exiva.lua — Exiva, etiqueta de estado e grelha de runa (direcção).
+  019_exiva.lua — Exiva, etiqueta de estado e grelha de runa (direcção).
 
   Dispara `say('exiva "nome"')` a partir do nome manual em storage ou do último alvo player
-  (002 / criatura em attack). `onTextMessage` filtra Game + Look, cruza com lastExivaName e
+  (003_damage_capture / criatura em attack). `onTextMessage` filtra Game + Look, cruza com lastExivaName e
   janela temporal para preencher storage + UI.
 
-  Depende de: 001_storage_init.lua, 002 recomendado.
+  No pack ordenado: penúltimo script antes do HUD (`020_status_hud.lua`).
+  Depende de: 002_storage_init.lua, 003 recomendado.
   PVE/PVP: Exiva útil sobretudo em PVP; parsing tolera EN e PT comuns.
 ]]
 

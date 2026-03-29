@@ -1,10 +1,10 @@
 --[[
-  002_damage_capture.lua — Registo de nomes para HUD / Recover / Exiva.
+  003_damage_capture.lua — Registo de nomes para HUD / Recover / Exiva.
 
   - storage.lastAttackedMe: último autor de dano recebido (parser EN/PT sobre o texto do cliente).
   - storage.lastAttacked: nome da criatura quando o alvo de ataque do cliente muda.
 
-  Depende de: 001_storage_init.lua (`knightTrim`, `knightEnsureStorage`).
+  Depende de: 002_storage_init.lua (`knightTrim`, `knightEnsureStorage`).
   PVE/PVP: mesmo fluxo; filtro por MessageModes.DamageReceived (= 22, gamelib const).
 ]]
 

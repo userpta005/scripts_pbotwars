@@ -1,7 +1,7 @@
 --[[
   010_auto_exori_strike.lua — Exori Strike com alvo adjacente (≤ 1 sqm, mesmo Z).
 
-  Depende de: 001_storage_init.lua (`knightAttackingCreature`, `knightTargetPosPair`,
+  Depende de: 002_storage_init.lua (`knightAttackingCreature`, `knightTargetPosPair`,
   fila de suporte).
   PVE/PVP: só dispara com criatura atacada válida e dentro de melee.
 ]]

@@ -1,8 +1,10 @@
 --[[
-  020_pvp_manual_mode.lua — Um clique: desliga TargetBot/CaveBot/AttackBot (vBot) e liga
+  001_pvp_manual_mode.lua — Um clique: desliga TargetBot/CaveBot/AttackBot (vBot) e liga
   Auto Exori Strike, Auto Target e Auto Chase (knight_scripts).
 
-  Depende de: 010_auto_exori_strike.lua, 011_auto_target.lua (`knightExoriStrikeMacro`,
+  Carregar primeiro no perfil: só regista o botão; ao clicar resolve as macros globalmente.
+
+  Depende de (macros ao clicar): 011_auto_exori_strike.lua, 012_auto_target.lua (`knightExoriStrikeMacro`,
   `knightAutoTargetMacro`, `knightAutoChaseMacro`). Se vBot não estiver carregado, os `setOff`
   são ignorados em segurança.
 ]]

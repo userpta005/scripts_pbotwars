@@ -4,7 +4,7 @@
   Lê teclas via `modules.corelib.g_keyboard` (isKeyPressed). Usa `knightMapUseTopThing` no pé e
   ao longo do vector até ao comprimento do offset (máx 5 passos por eixo).
 
-  Depende de: 001_storage_init.lua (`knightChatOpen`, `knightMapUseTopThing`).
+  Depende de: 002_storage_init.lua (`knightChatOpen`, `knightMapUseTopThing`).
   PVE/PVP: cuidado em PVP (uses visíveis); mesmo comportamento técnico.
 ]]
 

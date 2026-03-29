@@ -1,9 +1,9 @@
 --[[
   006_exeta_res.lua — Exeta Res em contacto (Chebyshev ≤ 1) com o alvo atacado.
 
-  Exige percentagem de mana mínima (evita exeta “seco”). Cooldown local + fila 001.
+  Exige percentagem de mana mínima (evita exeta “seco”). Cooldown local + fila 002.
 
-  Depende de: 001_storage_init.lua (`knightAttackingPosition`, `manapercent`).
+  Depende de: 002_storage_init.lua (`knightAttackingPosition`, `manapercent`).
   PVE/PVP: válido contra qualquer criatura atacada que esteja adjacente.
 ]]
 

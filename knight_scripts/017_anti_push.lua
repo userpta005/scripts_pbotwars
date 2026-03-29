@@ -4,7 +4,7 @@
   Objectivo: reduz empurrões em alguns servidores. Limite de stacks visíveis no tile para evitar
   spam. Só corre quando parado; inventário via `getContainers()` do bot.
 
-  Depende de: 001_storage_init.lua (`knightChatOpen`, `knightIsWalking`).
+  Depende de: 002_storage_init.lua (`knightChatOpen`, `knightIsWalking`).
   PVP: ATENÇÃO — deixa lixo no chão e gasta recursos; avalia risco.
 ]]
 
