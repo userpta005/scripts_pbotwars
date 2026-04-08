@@ -16,8 +16,16 @@ if knightEnsureStorage then
   })
 end
 
-local trim = knightTrim
-local flashBtn = knightFlashBtn
+local trim = knightTrim or function(s)
+  if type(s) ~= "string" then return "" end
+  return s:match("^%s*(.-)%s*$") or ""
+end
+local flashBtn = knightFlashBtn or function() end
+local isWalking = knightIsWalking or function()
+  if not player or not player.isWalking then return false end
+  local ok, w = pcall(function() return player:isWalking() end)
+  return ok and w == true
+end
 
 local PUSH_INTERVAL = 480
 local pushDest, pushActive, lastPushAt = nil, false, 0
@@ -102,14 +110,14 @@ macro(220, function()
   local mp = pos and pos() or nil
   if not mp then return end
   if mp.z ~= cp.z or getDistanceBetween(mp, cp) > 1 then
-    if not knightIsWalking() and (now - lastPushWalkAt) >= 170 then
+    if not isWalking() and (now - lastPushWalkAt) >= 170 then
       pcall(function() autoWalk(cp, 20, { ignoreNonPathable = true, precision = 1 }) end)
       lastPushWalkAt = now
     end
     return
   end
 
-  if knightIsWalking() then return end
+  if isWalking() then return end
   if mp.x == cp.x and mp.y == cp.y then return end
   if now - lastPushAt < PUSH_INTERVAL then return end
 

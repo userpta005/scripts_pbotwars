@@ -804,6 +804,24 @@ local CHASE_ATTACK_GAP_MS = 50
 local LADDER_USE_GAP_MS = 280
 local LADDER_ACTION_DIST = 4
 
+local trim = knightTrim or function(s)
+  if type(s) ~= "string" then return "" end
+  return s:match("^%s*(.-)%s*$") or ""
+end
+local chatOpen = function()
+  return knightChatOpen and knightChatOpen() or false
+end
+local macroIsOn = knightMacroIsOn or function(m)
+  if not m then return false end
+  local ok, on = pcall(function() return m:isOn() end)
+  if ok and on then return true end
+  ok, on = pcall(function() return m:isEnabled() end)
+  return ok and on or false
+end
+local nameMatch = knightNameMatchLock or function(a, b)
+  return trim(a) ~= "" and trim(a) == trim(b)
+end
+
 local chaseEngine = knightCreateVerticalEngine("_chase")
 local chaseWalkMem = knightCreateWalkMemory(145, 320)
 
@@ -820,12 +838,24 @@ local chaseWasOn = false
 local autoTargetMacro
 local autoChaseMacro
 
+local function safeSetOff(m)
+  if not m or not m.setOff then return end
+  pcall(function() m:setOff() end)
+end
+
+local function disableFollowIfNeeded()
+  if macroIsOn(knightFollowMacro) then
+    safeSetOff(knightFollowMacro)
+    storage.followLeader = ""
+  end
+end
+
 onAttackingCreatureChange(function(creature, oldCreature)
   if not creature or not creature.isPlayer or not creature:isPlayer() then return end
   local nOk, name = pcall(function() return creature:getName() end)
   if not nOk or type(name) ~= "string" or name == "" then return end
-  name = knightTrim(name)
-  if knightMacroIsOn(autoTargetMacro) or knightMacroIsOn(autoChaseMacro) then
+  name = trim(name)
+  if macroIsOn(autoTargetMacro) or macroIsOn(autoChaseMacro) then
     storage._target = name
     storage.followLeader = ""
   end
@@ -839,10 +869,11 @@ onCreaturePositionChange(function(creature, newPos, oldPos)
 end)
 
 autoTargetMacro = macro(100, "Auto Target", "Shift+Q", function()
-  if knightChatOpen() then return end
+  disableFollowIfNeeded()
+  if chatOpen() then return end
   if not knightGameAttackReady() then return end
 
-  local tname = knightTrim(storage._target or "")
+  local tname = trim(storage._target or "")
   local target = knightFindLockedPlayer(tname, true)
   if not target then
     if tname ~= "" then storage._targetId = 0 end
@@ -856,20 +887,21 @@ autoTargetMacro = macro(100, "Auto Target", "Shift+Q", function()
   local curName = ""
   if cur and cur.isPlayer and cur:isPlayer() then
     local cnOk, cn = pcall(function() return cur:getName() end)
-    if cnOk and type(cn) == "string" then curName = knightTrim(cn) end
+    if cnOk and type(cn) == "string" then curName = trim(cn) end
   end
   local attacking = false
   pcall(function() attacking = g_game.isAttacking() end)
-  if not knightNameMatchLock(tname, curName) or not attacking then
+  if not nameMatch(tname, curName) or not attacking then
     if throttle("reattack", REATTACK_GAP_MS) then knightGameAttack(target) end
   end
 end)
 
 autoChaseMacro = macro(CHASE_POLL_MS, "Auto Chase", "2", function()
   if not autoChaseMacro or autoChaseMacro:isOff() then return end
-  if knightChatOpen() then return end
+  disableFollowIfNeeded()
+  if chatOpen() then return end
 
-  local tname = knightTrim(storage._target or "")
+  local tname = trim(storage._target or "")
   if tname == "" then
     chaseEngine.clear()
     chaseWalkMem.clear()
@@ -973,8 +1005,8 @@ hotkey("4", doClear)
 
 local btnRecover
 local function doRecover()
-  if knightChatOpen() then return end
-  local name = knightTrim(storage.lastAttacked or "")
+  if chatOpen() then return end
+  local name = trim(storage.lastAttacked or "")
   if name == "" then return end
   storage._target = name
   local c = knightFindLockedPlayer(name, true)
@@ -995,7 +1027,7 @@ macro(150, function()
     chaseWalkMem.clear()
   end
   chaseWasOn = on and true or false
-  storage._targetEnabled = knightMacroIsOn(autoTargetMacro)
+  storage._targetEnabled = macroIsOn(autoTargetMacro)
   storage._chaseEnabled = on
 end)
 
@@ -1033,6 +1065,24 @@ local INTERRUPTOR_MS = 500
 local LADDER_USE_GAP_MS = 280
 local LADDER_ACTION_DIST = 4
 
+local trim = knightTrim or function(s)
+  if type(s) ~= "string" then return "" end
+  return s:match("^%s*(.-)%s*$") or ""
+end
+local chatOpen = function()
+  return knightChatOpen and knightChatOpen() or false
+end
+local macroIsOn = knightMacroIsOn or function(m)
+  if not m then return false end
+  local ok, on = pcall(function() return m:isOn() end)
+  if ok and on then return true end
+  ok, on = pcall(function() return m:isEnabled() end)
+  return ok and on or false
+end
+local nameMatch = knightNameMatchLock or function(a, b)
+  return trim(a) ~= "" and trim(a) == trim(b)
+end
+
 local followEngine = knightCreateVerticalEngine("_follow")
 local followWalkMem = knightCreateWalkMemory(145, 320)
 
@@ -1055,20 +1105,32 @@ local function cancelAttackIfTargetingLeader(lname)
   end)
   if not ok or not cur then return end
   local nOk, n = pcall(function() return cur:getName() end)
-  if nOk and type(n) == "string" and knightNameMatchLock(lname, n) then
+  if nOk and type(n) == "string" and nameMatch(lname, n) then
     safeCancelAttack()
   end
 end
 
 local followMacro = macro(INTERRUPTOR_MS, "Follow PVP", "3", function() end)
+knightFollowMacro = followMacro
+
+local function safeSetOff(m)
+  if not m or not m.setOff then return end
+  pcall(function() m:setOff() end)
+end
+
+local function disableTargetAndChaseIfNeeded()
+  if macroIsOn(knightAutoTargetMacro) then safeSetOff(knightAutoTargetMacro) end
+  if macroIsOn(knightAutoChaseMacro) then safeSetOff(knightAutoChaseMacro) end
+end
 
 onAttackingCreatureChange(function(creature)
   if not followMacro or not followMacro:isOn() then return end
-  if knightChatOpen and knightChatOpen() then return end
+  disableTargetAndChaseIfNeeded()
+  if chatOpen() then return end
   if not creature or not creature.isPlayer or not creature:isPlayer() then return end
   local nOk, name = pcall(function() return creature:getName() end)
   if not nOk or type(name) ~= "string" then return end
-  name = knightTrim(name)
+  name = trim(name)
   if name == "" then return end
   storage.followLeader = name
   storage._target = ""
@@ -1077,8 +1139,9 @@ end)
 
 macro(FOLLOW_POLL_MS, function()
   if not followMacro or not followMacro:isOn() then return end
-  if knightChatOpen and knightChatOpen() then return end
-  local lname = knightTrim(storage.followLeader or "")
+  disableTargetAndChaseIfNeeded()
+  if chatOpen() then return end
+  local lname = trim(storage.followLeader or "")
   if lname == "" then return end
   cancelAttackIfTargetingLeader(lname)
   if not autoWalk then return end
@@ -1149,7 +1212,7 @@ end)
 
 onCreaturePositionChange(function(creature, newPos, oldPos)
   if not followMacro or followMacro:isOff() then return end
-  local lname = knightTrim(storage.followLeader or "")
+  local lname = trim(storage.followLeader or "")
   if lname == "" then return end
   followEngine.onTargetMoved(creature, newPos, oldPos, lname)
   followEngine.onLocalPlayerAscend(creature, newPos, oldPos, lname)
@@ -1429,8 +1492,16 @@ if knightEnsureStorage then
   })
 end
 
-local trim = knightTrim
-local flashBtn = knightFlashBtn
+local trim = knightTrim or function(s)
+  if type(s) ~= "string" then return "" end
+  return s:match("^%s*(.-)%s*$") or ""
+end
+local flashBtn = knightFlashBtn or function() end
+local isWalking = knightIsWalking or function()
+  if not player or not player.isWalking then return false end
+  local ok, w = pcall(function() return player:isWalking() end)
+  return ok and w == true
+end
 
 local PUSH_INTERVAL = 480
 local pushDest, pushActive, lastPushAt = nil, false, 0
@@ -1515,14 +1586,14 @@ macro(220, function()
   local mp = pos and pos() or nil
   if not mp then return end
   if mp.z ~= cp.z or getDistanceBetween(mp, cp) > 1 then
-    if not knightIsWalking() and (now - lastPushWalkAt) >= 170 then
+    if not isWalking() and (now - lastPushWalkAt) >= 170 then
       pcall(function() autoWalk(cp, 20, { ignoreNonPathable = true, precision = 1 }) end)
       lastPushWalkAt = now
     end
     return
   end
 
-  if knightIsWalking() then return end
+  if isWalking() then return end
   if mp.x == cp.x and mp.y == cp.y then return end
   if now - lastPushAt < PUSH_INTERVAL then return end
 
@@ -2076,6 +2147,7 @@ if knightEnsureStorage then
   knightEnsureStorage({
     ringCrowdEnabled = true,
     ringCrowdManaged = false,
+    ringCrowdManagedId = 0,
   })
 end
 
@@ -2261,9 +2333,12 @@ macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
   local ring = getEquippedRing()
   local equippedId = itemId(ring)
   local wearingTargetRing = isTargetRingEquipped(equippedId, bagId, equippedAltId)
+  local managedId = tonumber(storage.ringCrowdManagedId) or 0
 
   if wearingTargetRing and storage.ringCrowdManaged ~= true then
     storage.ringCrowdManaged = true
+    storage.ringCrowdManagedId = equippedId
+    managedId = equippedId
   end
 
   if monsters >= MONSTER_THRESHOLD and allowEquip then
@@ -2275,6 +2350,7 @@ macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
       lastActionAt = now
       lastEquipOkAt = now
       storage.ringCrowdManaged = true
+      storage.ringCrowdManagedId = equippedAltId > 0 and equippedAltId or bagId
     end
     return
   end
@@ -2283,13 +2359,18 @@ macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
     if now - lastEquipOkAt < POST_EQUIP_LOCK_MS then return end
     if not ring then
       storage.ringCrowdManaged = false
+      storage.ringCrowdManagedId = 0
       return
     end
-    if not (storage.ringCrowdManaged == true or wearingTargetRing) then return end
+    local canUnequipManaged = storage.ringCrowdManaged == true
+        and managedId > 0
+        and equippedId == managedId
+    if not (wearingTargetRing or canUnequipManaged) then return end
     if unequipOneRing(ring) then
       lastActionAt = now
       lastUnequipOkAt = now
       storage.ringCrowdManaged = false
+      storage.ringCrowdManagedId = 0
     end
   end
 end)

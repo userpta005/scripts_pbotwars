@@ -21,6 +21,7 @@ if knightEnsureStorage then
   knightEnsureStorage({
     ringCrowdEnabled = true,
     ringCrowdManaged = false,
+    ringCrowdManagedId = 0,
   })
 end
 
@@ -206,9 +207,12 @@ macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
   local ring = getEquippedRing()
   local equippedId = itemId(ring)
   local wearingTargetRing = isTargetRingEquipped(equippedId, bagId, equippedAltId)
+  local managedId = tonumber(storage.ringCrowdManagedId) or 0
 
   if wearingTargetRing and storage.ringCrowdManaged ~= true then
     storage.ringCrowdManaged = true
+    storage.ringCrowdManagedId = equippedId
+    managedId = equippedId
   end
 
   if monsters >= MONSTER_THRESHOLD and allowEquip then
@@ -220,6 +224,7 @@ macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
       lastActionAt = now
       lastEquipOkAt = now
       storage.ringCrowdManaged = true
+      storage.ringCrowdManagedId = equippedAltId > 0 and equippedAltId or bagId
     end
     return
   end
@@ -228,13 +233,18 @@ macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
     if now - lastEquipOkAt < POST_EQUIP_LOCK_MS then return end
     if not ring then
       storage.ringCrowdManaged = false
+      storage.ringCrowdManagedId = 0
       return
     end
-    if not (storage.ringCrowdManaged == true or wearingTargetRing) then return end
+    local canUnequipManaged = storage.ringCrowdManaged == true
+        and managedId > 0
+        and equippedId == managedId
+    if not (wearingTargetRing or canUnequipManaged) then return end
     if unequipOneRing(ring) then
       lastActionAt = now
       lastUnequipOkAt = now
       storage.ringCrowdManaged = false
+      storage.ringCrowdManagedId = 0
     end
   end
 end)

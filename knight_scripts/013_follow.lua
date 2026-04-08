@@ -27,6 +27,24 @@ local INTERRUPTOR_MS = 500
 local LADDER_USE_GAP_MS = 280
 local LADDER_ACTION_DIST = 4
 
+local trim = knightTrim or function(s)
+  if type(s) ~= "string" then return "" end
+  return s:match("^%s*(.-)%s*$") or ""
+end
+local chatOpen = function()
+  return knightChatOpen and knightChatOpen() or false
+end
+local macroIsOn = knightMacroIsOn or function(m)
+  if not m then return false end
+  local ok, on = pcall(function() return m:isOn() end)
+  if ok and on then return true end
+  ok, on = pcall(function() return m:isEnabled() end)
+  return ok and on or false
+end
+local nameMatch = knightNameMatchLock or function(a, b)
+  return trim(a) ~= "" and trim(a) == trim(b)
+end
+
 local followEngine = knightCreateVerticalEngine("_follow")
 local followWalkMem = knightCreateWalkMemory(145, 320)
 
@@ -49,20 +67,32 @@ local function cancelAttackIfTargetingLeader(lname)
   end)
   if not ok or not cur then return end
   local nOk, n = pcall(function() return cur:getName() end)
-  if nOk and type(n) == "string" and knightNameMatchLock(lname, n) then
+  if nOk and type(n) == "string" and nameMatch(lname, n) then
     safeCancelAttack()
   end
 end
 
 local followMacro = macro(INTERRUPTOR_MS, "Follow PVP", "3", function() end)
+knightFollowMacro = followMacro
+
+local function safeSetOff(m)
+  if not m or not m.setOff then return end
+  pcall(function() m:setOff() end)
+end
+
+local function disableTargetAndChaseIfNeeded()
+  if macroIsOn(knightAutoTargetMacro) then safeSetOff(knightAutoTargetMacro) end
+  if macroIsOn(knightAutoChaseMacro) then safeSetOff(knightAutoChaseMacro) end
+end
 
 onAttackingCreatureChange(function(creature)
   if not followMacro or not followMacro:isOn() then return end
-  if knightChatOpen and knightChatOpen() then return end
+  disableTargetAndChaseIfNeeded()
+  if chatOpen() then return end
   if not creature or not creature.isPlayer or not creature:isPlayer() then return end
   local nOk, name = pcall(function() return creature:getName() end)
   if not nOk or type(name) ~= "string" then return end
-  name = knightTrim(name)
+  name = trim(name)
   if name == "" then return end
   storage.followLeader = name
   storage._target = ""
@@ -71,8 +101,9 @@ end)
 
 macro(FOLLOW_POLL_MS, function()
   if not followMacro or not followMacro:isOn() then return end
-  if knightChatOpen and knightChatOpen() then return end
-  local lname = knightTrim(storage.followLeader or "")
+  disableTargetAndChaseIfNeeded()
+  if chatOpen() then return end
+  local lname = trim(storage.followLeader or "")
   if lname == "" then return end
   cancelAttackIfTargetingLeader(lname)
   if not autoWalk then return end
@@ -143,7 +174,7 @@ end)
 
 onCreaturePositionChange(function(creature, newPos, oldPos)
   if not followMacro or followMacro:isOff() then return end
-  local lname = knightTrim(storage.followLeader or "")
+  local lname = trim(storage.followLeader or "")
   if lname == "" then return end
   followEngine.onTargetMoved(creature, newPos, oldPos, lname)
   followEngine.onLocalPlayerAscend(creature, newPos, oldPos, lname)
