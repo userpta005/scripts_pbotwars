@@ -14,7 +14,8 @@ knightAntiParalyzeMacro = macro(100, "Anti Paralyze", "Shift+3", function()
   if not isParalyzed or not isParalyzed() then return end
   if not mana or mana() < MIN_MANA then return end
   if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
-  if not knightGlobalCastReady(600) then return end
+  -- Prioriza resposta ao paralyze com gate global mais curto.
+  if not knightGlobalCastReady(200) then return end
   knightSpellSay(SPELL)
   lastCast = knightNow()
   knightTouchGlobalCast()

@@ -1,37 +1,46 @@
--- [INICIO] 015_id_cursor_map.lua
---
--- Objetivo: Shift+Y imprime ID da criatura ou item sob o cursor no minimapa; se falhar,
---   lista clientIds de todos os itens do tile.
+--[[
+  015_id_cursor_map.lua - Shift+Y imprime ID da criatura/item sob cursor no minimapa.
+  Fallback: lista clientIds de todo stack do tile.
 
--- Hotkey: ID de creature/item sob cursor ou stack completo do tile.
-singlehotkey("Shift+Y", "ID cursor mapa", function()
-  -- Nao dispara enquanto o foco esta no chat.
-  if modules.game_console and modules.game_console:isChatEnabled() then return end
-  -- Painel do mapa precisa existir e expor mousePos.
+  Depende de: gameMapPanel e, opcionalmente, `knightChatOpen` (002).
+]]
+
+local function idCursorMapRun()
+  if knightChatOpen and knightChatOpen() then return end
+
   local gm = modules.game_interface and modules.game_interface.gameMapPanel
   if not gm or not gm.mousePos then return end
-  local tile = gm:getTile(gm.mousePos)
-  if not tile then return end
-  local tpos = tile:getPosition()
-  -- Coordenadas fixas para o rodape da mensagem.
+
+  local okTile, tile = pcall(function() return gm:getTile(gm.mousePos) end)
+  if not okTile or not tile then return end
+
+  local okPos, tpos = pcall(function() return tile:getPosition() end)
+  if not okPos or not tpos then return end
+
   local pstr = string.format("%d,%d,%d", tpos.x, tpos.y, tpos.z)
   local msg = ""
+
   pcall(function()
-    -- Offset dentro do tile conforme pixel sob o cursor.
-    local offset = gm:getPositionOffset(gm.mousePos)
-    -- Prioriza criatura no stack sob o cursor.
-    local c = tile:getTopCreatureEx(offset)
+    local offset = gm.getPositionOffset and gm:getPositionOffset(gm.mousePos) or nil
+    local c = offset and tile.getTopCreatureEx and tile:getTopCreatureEx(offset) or nil
     if c then
-      msg = string.format("[ID] %s id=%s | %s", c:getName() or "?", tostring(c:getId()), pstr)
+      local cname = c.getName and c:getName() or "?"
+      local cid = c.getId and c:getId() or "?"
+      msg = string.format("[ID] %s id=%s | %s", tostring(cname), tostring(cid), pstr)
       return
     end
-    -- Senao item "look" no mesmo offset ou topo generico do tile.
-    local lt = tile:getTopLookThingEx(offset) or tile:getTopLookThing()
+    local lt = nil
+    if offset and tile.getTopLookThingEx then
+      lt = tile:getTopLookThingEx(offset)
+    end
+    if (not lt) and tile.getTopLookThing then
+      lt = tile:getTopLookThing()
+    end
     if lt and lt.getId then
       msg = string.format("[ID] clientId=%s | %s", tostring(lt:getId()), pstr)
     end
   end)
-  -- Fallback: dump de todos os clientIds empilhados no tile.
+
   if msg == "" then
     local ids = {}
     pcall(function()
@@ -41,9 +50,13 @@ singlehotkey("Shift+Y", "ID cursor mapa", function()
     end)
     msg = string.format("[ID] %s | stack [%s]", pstr, #ids > 0 and table.concat(ids, ", ") or "-")
   end
-  -- Eco no log do bot; popup opcional se o client expoe info().
+
   print(msg)
   if info then info(msg) end
-end)
+end
 
--- [FIM] 015_id_cursor_map.lua
+if singlehotkey then
+  singlehotkey("Shift+Y", "ID cursor mapa", idCursorMapRun)
+else
+  hotkey("Shift+Y", idCursorMapRun)
+end

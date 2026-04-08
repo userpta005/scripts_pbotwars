@@ -82,7 +82,11 @@ hotkey("Shift+Z", stopPush)
 macro(220, function()
   if not pushActive or not pushDest then return end
   local vname = trim(storage.pushVictimName)
-  if vname == "" then pushActive = false; return end
+  if vname == "" then
+    pushActive = false
+    storage._pushActive = false
+    return
+  end
 
   local ok, creature = pcall(function() return getPlayerByName(vname, true) end)
   if not ok or not creature then return end
