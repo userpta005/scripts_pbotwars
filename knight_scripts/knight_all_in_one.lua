@@ -15,14 +15,14 @@ end
 -- ========== 001_pvp_manual_mode.lua ==========
 
 --[[
-  001_pvp_manual_mode.lua  Um clique: desliga TargetBot/CaveBot/AttackBot (vBot) e liga
+  001_pvp_manual_mode.lua — Um clique: desliga TargetBot/CaveBot/AttackBot (vBot) e liga
   Auto Exori Strike, Auto Target e Auto Chase (knight_scripts).
 
-  Carregar primeiro no perfil: so regista o botao; ao clicar resolve as macros globalmente.
+  Carregar primeiro no perfil: só regista o botão; ao clicar resolve as macros globalmente.
 
   Depende de (macros ao clicar): 011_auto_exori_strike.lua, 012_auto_target.lua (`knightExoriStrikeMacro`,
-  `knightAutoTargetMacro`, `knightAutoChaseMacro`). Se vBot nao estiver carregado, os `setOff`
-  sao ignorados em seguranca.
+  `knightAutoTargetMacro`, `knightAutoChaseMacro`). Se vBot não estiver carregado, os `setOff`
+  são ignorados em segurança.
 ]]
 
 local function safeCall(fn)
@@ -57,13 +57,13 @@ local btnPvpManual = addButton("btn_pvp_manual", "Modo PVP manual (bots off)", f
   if knightFlashBtn then knightFlashBtn(btnPvpManual) end
 end)
 
-
 -- ========== 002_storage_init.lua ==========
 
 --[[
-  002_storage_init.lua  Base minima do knight_scripts (PbotWars / OTCv8 game_bot).
+  002_storage_init.lua — Base do knight_scripts (PbotWars / OTCv8 game_bot).
 
-  Gate global de cast evita colisao de say() entre macros.
+  Tempos: apenas `now` do game_bot (sem relogios misturados).
+  Entre spells: so `knightGlobalCastReady` / `knightTouchGlobalCast` (ms configuravel).
   Vertical engine factory partilhada por 012 (chase) e 013 (follow).
   Walk memory helper evita re-path spam no mesmo destino.
 ]]
@@ -72,10 +72,6 @@ storage = (type(storage) == "table" and storage) or {}
 
 KNIGHT_EXORI_GAUGE_SPELL = KNIGHT_EXORI_GAUGE_SPELL or "exori gauge"
 KNIGHT_EXORI_GAUGE_MIN_MANA = KNIGHT_EXORI_GAUGE_MIN_MANA or 400
-
-function knightSupportGap()
-  return 1500
-end
 
 function knightSupportMacroEnabled(macroRef)
   if not macroRef then return false end
@@ -160,24 +156,11 @@ function knightSpellSay(text)
   end
 end
 
-function knightNow()
-  local n = now
-  if type(n) == "number" and n >= 0 then
-    if type(storage) == "table" then storage.__knightLastNow = n end
-    return n
-  end
-  if type(storage) == "table" and type(storage.__knightLastNow) == "number" then
-    return storage.__knightLastNow
-  end
-  if os and os.clock then
-    return math.floor(os.clock() * 1000)
-  end
-  return 0
-end
-
+--- Cooldown local da spell + mana (usa so `now` do bot).
 function knightSpellReady(lastAt, gapMs, minMana)
+  if type(now) ~= "number" then return false end
   lastAt = lastAt or 0
-  if (knightNow() - lastAt) < gapMs then return false end
+  if (now - lastAt) < gapMs then return false end
   if minMana and mana then
     local okM, m = pcall(function() return mana() end)
     if not okM or type(m) ~= "number" or m < minMana then return false end
@@ -185,24 +168,19 @@ function knightSpellReady(lastAt, gapMs, minMana)
   return true
 end
 
---- Gate global: impede duas macros de spell de dispararem say() em janela curta.
+--- Minimo de ms entre qualquer say() de spell deste pacote (anti-colisao).
 function knightGlobalCastReady(minGapMs)
+  if type(now) ~= "number" then return false end
   local last = storage._lastGlobalCastAt or 0
-  if (knightNow() - last) < (minGapMs or 600) then return false end
-  return true
+  if type(last) ~= "number" or last <= 0 then return true end
+  if now < last then return true end
+  return (now - last) >= (minGapMs or 600)
 end
 
 function knightTouchGlobalCast()
-  storage._lastGlobalCastAt = knightNow()
-end
-
--- Stubs vazios: codigo antigo ou monolito antigo podem ainda referenciar.
-function knightSupportShouldDefer() return false end
-function knightSupportPriorityRegister() end
-function knightTouchSupportCast() end
-function knightCanCastSpell() return true end
-function knightSupportTimingAndSpellOk(spell, lastAt, localGapMs, minMana)
-  return knightSpellReady(lastAt, localGapMs, minMana)
+  if type(now) == "number" then
+    storage._lastGlobalCastAt = now
+  end
 end
 
 function knightAttackingCreature()
@@ -511,13 +489,12 @@ knightEnsureStorage({
   _lastGlobalCastAt = 0,
 })
 
-
 -- ========== 003_damage_capture.lua ==========
 
 --[[
-  003_damage_capture.lua  Registo de nomes para HUD / Recover / Exiva.
+  003_damage_capture.lua — Registo de nomes para HUD / Recover / Exiva.
 
-  - storage.lastAttackedMe: ultimo autor de dano recebido (parser EN/PT sobre o texto do cliente).
+  - storage.lastAttackedMe: último autor de dano recebido (parser EN/PT sobre o texto do cliente).
   - storage.lastAttacked: nome da criatura quando o alvo de ataque do cliente muda.
 
   Depende de: 002_storage_init.lua (`knightTrim`, `knightEnsureStorage`).
@@ -529,10 +506,10 @@ if knightEnsureStorage then
   knightEnsureStorage({ lastAttackedMe = "", lastAttacked = "" })
 end
 
---- Modo de mensagem dano recebido (`modules/gamelib/const.lua` / MessageModes).
+--- Modo de mensagem “dano recebido” (`modules/gamelib/const.lua` / MessageModes).
 local MSG_DMG = (MessageModes and MessageModes.DamageReceived) or 22
 
---- Ordem: padroes mais especificos primeiro (evita captura ambigua).
+--- Ordem: padrões mais específicos primeiro (evita captura ambígua).
 local DMG_NAME_PATTERNS = {
   "due to an attack by (.+)%.$",
   "due to an attack by (.+)$",
@@ -565,11 +542,10 @@ onAttackingCreatureChange(function(creature, oldCreature)
   setLastAttacked(creature)
 end)
 
-
 -- ========== 004_auto_exori_gauge.lua ==========
 
 --[[
-  004_auto_exori_gauge.lua  Exori Gauge (simplificado).
+  004_auto_exori_gauge.lua — Exori Gauge.
   Depende de: 002_storage_init.lua
 ]]
 
@@ -580,20 +556,24 @@ local lastCast = 0
 local GAP_MS = 2300
 local MIN_MANA = KNIGHT_EXORI_GAUGE_MIN_MANA or 400
 
+local function gaugeReady()
+  if knightChatOpen() then return false end
+  if hasPartyBuff and hasPartyBuff() then return false end
+  return knightSpellReady(lastCast, GAP_MS, MIN_MANA)
+end
+
 knightExoriGaugeMacro = macro(200, "Exori Gauge", "Shift+0", function()
-  if hasPartyBuff and hasPartyBuff() then return end
-  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not gaugeReady() then return end
   if not knightGlobalCastReady(600) then return end
   knightSpellSay(SPELL)
-  lastCast = knightNow()
+  lastCast = now
   knightTouchGlobalCast()
 end)
-
 
 -- ========== 005_auto_utamo_tempo.lua ==========
 
 --[[
-  005_auto_utamo_tempo.lua  Utamo tempo (simplificado).
+  005_auto_utamo_tempo.lua — Utamo tempo.
   Depende de: 002_storage_init.lua
 ]]
 
@@ -604,21 +584,25 @@ local lastCast = 0
 local GAP_MS = 2300
 local MIN_MANA = 200
 
+local function utamoReady()
+  if knightChatOpen() then return false end
+  if hasHaste and not hasHaste() then return false end
+  if (hasManaShield and hasManaShield()) or (hasPartyBuff and hasPartyBuff()) then return false end
+  return knightSpellReady(lastCast, GAP_MS, MIN_MANA)
+end
+
 knightUtamoTempoMacro = macro(200, "Utamo Tempo", "Shift+1", function()
-  if hasHaste and not hasHaste() then return end
-  if (hasManaShield and hasManaShield()) or (hasPartyBuff and hasPartyBuff()) then return end
-  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not utamoReady() then return end
   if not knightGlobalCastReady(600) then return end
   knightSpellSay(SPELL)
-  lastCast = knightNow()
+  lastCast = now
   knightTouchGlobalCast()
 end)
-
 
 -- ========== 006_auto_haste.lua ==========
 
 --[[
-  006_auto_haste.lua  Utani tempo hur (simplificado).
+  006_auto_haste.lua — Utani tempo hur.
   Depende de: 002_storage_init.lua
 ]]
 
@@ -629,20 +613,24 @@ local lastCast = 0
 local GAP_MS = 3200
 local MIN_MANA = 100
 
+local function hasteReady()
+  if knightChatOpen() then return false end
+  if hasHaste and hasHaste() then return false end
+  return knightSpellReady(lastCast, GAP_MS, MIN_MANA)
+end
+
 knightHasteMacro = macro(400, "Auto Haste", "Shift+2", function()
-  if hasHaste and hasHaste() then return end
-  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not hasteReady() then return end
   if not knightGlobalCastReady(600) then return end
   knightSpellSay(SPELL)
-  lastCast = knightNow()
+  lastCast = now
   knightTouchGlobalCast()
 end)
-
 
 -- ========== 007_exeta_res.lua ==========
 
 --[[
-  007_exeta_res.lua  Exeta res melee (simplificado).
+  007_exeta_res.lua — Exeta res melee.
   Depende de: 002_storage_init.lua
 ]]
 
@@ -653,24 +641,28 @@ local lastCast = 0
 local GAP_MS = 6000
 local MIN_MANA = 350
 
-knightExetaResMacro = macro(180, "Exeta Res", "Shift+6", function()
+local function exetaReady()
+  if knightChatOpen() then return false end
   local t = knightAttackingCreature()
-  if not t then return end
+  if not t then return false end
   local tp, mp = knightTargetPosPair(t)
-  if not tp or not mp or tp.z ~= mp.z then return end
-  if getDistanceBetween(mp, tp) > 1 then return end
-  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not tp or not mp or tp.z ~= mp.z then return false end
+  if getDistanceBetween(mp, tp) > 1 then return false end
+  return knightSpellReady(lastCast, GAP_MS, MIN_MANA)
+end
+
+knightExetaResMacro = macro(180, "Exeta Res", "Shift+6", function()
+  if not exetaReady() then return end
   if not knightGlobalCastReady(600) then return end
   knightSpellSay(SPELL)
-  lastCast = knightNow()
+  lastCast = now
   knightTouchGlobalCast()
 end)
-
 
 -- ========== 008_anti_paralyze.lua ==========
 
 --[[
-  008_anti_paralyze.lua  Anti paralyse (simplificado).
+  008_anti_paralyze.lua — Anti paralyse (gate global mais curto).
   Depende de: 002_storage_init.lua
 ]]
 
@@ -684,14 +676,13 @@ local MIN_MANA = 60
 knightAntiParalyzeMacro = macro(100, "Anti Paralyze", "Shift+3", function()
   if not isParalyzed or not isParalyzed() then return end
   if not mana or mana() < MIN_MANA then return end
-  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
-  -- Prioriza resposta ao paralyze com gate global mais curto.
+  if type(now) ~= "number" then return end
+  if (now - lastCast) < GAP_MS then return end
   if not knightGlobalCastReady(200) then return end
   knightSpellSay(SPELL)
-  lastCast = knightNow()
+  lastCast = now
   knightTouchGlobalCast()
 end)
-
 
 -- ========== 009_anti_kick.lua ==========
 
@@ -714,11 +705,10 @@ macro(ROTATE_MS, "Anti Kick", "Shift+4", function()
   dirIndex = (dirIndex + 1) % 4
 end)
 
-
 -- ========== 010_combo_knight.lua ==========
 
 --[[
-  010_combo_knight.lua  Mas exori hur melee (simplificado: sem passo lateral nem fila global).
+  010_combo_knight.lua — Mas exori hur melee.
   Depende de: 002_storage_init.lua
 ]]
 
@@ -729,24 +719,28 @@ local lastCast = 0
 local GAP_MS = 2200
 local MIN_MANA = 1400
 
-knightMasExoriHurMacro = macro(200, "Mas Exori Hur", "Shift+5", function()
+local function masHurReady()
+  if knightChatOpen() then return false end
   local t = knightAttackingCreature()
-  if not t then return end
+  if not t then return false end
   local tp, mp = knightTargetPosPair(t)
-  if not tp or not mp or tp.z ~= mp.z then return end
-  if getDistanceBetween(mp, tp) > 1 then return end
-  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not tp or not mp or tp.z ~= mp.z then return false end
+  if getDistanceBetween(mp, tp) > 1 then return false end
+  return knightSpellReady(lastCast, GAP_MS, MIN_MANA)
+end
+
+knightMasExoriHurMacro = macro(200, "Mas Exori Hur", "Shift+5", function()
+  if not masHurReady() then return end
   if not knightGlobalCastReady(600) then return end
   knightSpellSay(SPELL)
-  lastCast = knightNow()
+  lastCast = now
   knightTouchGlobalCast()
 end)
-
 
 -- ========== 011_auto_exori_strike.lua ==========
 
 --[[
-  011_auto_exori_strike.lua  Exori strike melee (simplificado).
+  011_auto_exori_strike.lua — Exori strike melee.
   Depende de: 002_storage_init.lua
 ]]
 
@@ -757,30 +751,34 @@ local lastCast = 0
 local GAP_MS = 2000
 local MIN_MANA = 800
 
-knightExoriStrikeMacro = macro(180, "Auto Exori Strike", "Shift+7", function()
+local function strikeReady()
+  if knightChatOpen() then return false end
   local t = knightAttackingCreature()
-  if not t then return end
+  if not t then return false end
   local tp, mp = knightTargetPosPair(t)
-  if not tp or not mp or tp.z ~= mp.z then return end
-  if getDistanceBetween(mp, tp) > 1 then return end
-  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not tp or not mp or tp.z ~= mp.z then return false end
+  if getDistanceBetween(mp, tp) > 1 then return false end
+  return knightSpellReady(lastCast, GAP_MS, MIN_MANA)
+end
+
+knightExoriStrikeMacro = macro(180, "Auto Exori Strike", "Shift+7", function()
+  if not strikeReady() then return end
   if not knightGlobalCastReady(600) then return end
   knightSpellSay(SPELL)
-  lastCast = knightNow()
+  lastCast = now
   knightTouchGlobalCast()
 end)
-
 
 -- ========== 012_auto_target.lua ==========
 
 --[[
-  012_auto_target.lua  Lock de alvo PVP + Auto Chase.
+  012_auto_target.lua — Lock de alvo PVP + Auto Chase.
 
-  - Auto Target (Shift+Q): mantem `g_game.attack` no jogador lockado no mesmo piso.
-  - Auto Chase (2): forca chase mode 1 e perseguicao vertical via motor partilhado
+  - Auto Target (Shift+Q): mantém `g_game.attack` no jogador lockado no mesmo piso.
+  - Auto Chase (2): força chase mode 1 e perseguição vertical via motor partilhado
     (`knightCreateVerticalEngine` de 002).
 
-  Exclusao mutua automatica com 013 Follow PVP.
+  Exclusão mútua automática com 013 Follow PVP.
   Depende de: 002_storage_init.lua, 003 recomendado (lastAttacked).
 ]]
 
@@ -1004,17 +1002,16 @@ end)
 knightAutoTargetMacro = autoTargetMacro
 knightAutoChaseMacro = autoChaseMacro
 
-
 -- ========== 013_follow.lua ==========
 
 --[[
-  013_follow.lua  Follow PVP (so caminha; nao mantem attack no lider).
+  013_follow.lua — Follow PVP (só caminha; não mantém attack no líder).
 
-  Com a macro ligada, o proximo player atacado passa a ser `followLeader`. Perseguicao por
-  `autoWalk`; mudanca de Z via motor partilhado (`knightCreateVerticalEngine` de 002).
+  Com a macro ligada, o próximo player atacado passa a ser `followLeader`. Perseguição por
+  `autoWalk`; mudança de Z via motor partilhado (`knightCreateVerticalEngine` de 002).
   Uses em sqm adjacentes via `knightMapUseTopThing` (002).
 
-  Exclusao mutua automatica com 012 Auto Chase.
+  Exclusão mútua automática com 012 Auto Chase.
   Depende de: 002_storage_init.lua
 ]]
 storage = (type(storage) == "table" and storage) or {}
@@ -1184,17 +1181,16 @@ macro(150, function()
   storage._followEnabled = on
 end)
 
-
 -- ========== 014_bugmap.lua ==========
 
 --[[
-  014_bugmap.lua  Bug map: use em linha na direccao das teclas WASD/QEZC.
+  014_bugmap.lua — “Bug map”: use em linha na direcção das teclas WASD/QEZC.
 
-  Le teclas via `modules.corelib.g_keyboard` (isKeyPressed). Usa `knightMapUseTopThing` no pe e
-  ao longo do vector ate ao comprimento do offset (max 5 passos por eixo).
+  Lê teclas via `modules.corelib.g_keyboard` (isKeyPressed). Usa `knightMapUseTopThing` no pé e
+  ao longo do vector até ao comprimento do offset (máx 5 passos por eixo).
 
   Depende de: 002_storage_init.lua (`knightChatOpen`, `knightMapUseTopThing`).
-  PVE/PVP: cuidado em PVP (uses visiveis); mesmo comportamento tecnico.
+  PVE/PVP: cuidado em PVP (uses visíveis); mesmo comportamento técnico.
 ]]
 
 local BUG_DIRS = {
@@ -1227,7 +1223,6 @@ macro(50, "BugMap", "Shift+T", function()
     knightMapUseTopThing(mp.x + sx * i, mp.y + sy * i, mp.z)
   end
 end)
-
 
 -- ========== 015_id_cursor_map.lua ==========
 
@@ -1294,16 +1289,15 @@ else
   hotkey("Shift+Y", idCursorMapRun)
 end
 
-
 -- ========== 016_pull_items.lua ==========
 
 --[[
-  016_pull_items.lua  Puxar itens dos 8 sqm vizinhos para o pe (2 direcoes por tick).
+  016_pull_items.lua — Puxar itens dos 8 sqm vizinhos para o pé (2 direções por tick).
 
-  Considera pickupable ou nao NotMoveable (API do item). Usa `g_game.move`; so quando parado.
+  Considera pickupable ou não “NotMoveable” (API do item). Usa `g_game.move`; só quando parado.
 
   Depende de: 002_storage_init.lua (`knightChatOpen`, `knightIsWalking`).
-  PVE: util para loot no chao; PVP: pode ser lento  desliga se nao quiseres o ruido.
+  PVE: útil para loot no chão; PVP: pode ser lento — desliga se não quiseres o ruído.
 ]]
 
 local PD = {
@@ -1350,17 +1344,16 @@ macro(260, "Puxar Itens", "Shift+F", function()
   end
 end)
 
-
 -- ========== 017_anti_push.lua ==========
 
 --[[
-  017_anti_push.lua  Encher o tile do pe com moedas (alterna gold/platinum) ou usar crystal coin.
+  017_anti_push.lua — Encher o tile do pé com moedas (alterna gold/platinum) ou usar crystal coin.
 
-  Objectivo: reduz empurroes em alguns servidores. Limite de stacks visiveis no tile para evitar
-  spam. So corre quando parado; inventario via `getContainers()` do bot.
+  Objectivo: reduz empurrões em alguns servidores. Limite de stacks visíveis no tile para evitar
+  spam. Só corre quando parado; inventário via `getContainers()` do bot.
 
   Depende de: 002_storage_init.lua (`knightChatOpen`, `knightIsWalking`).
-  PVP: ATENCAO  deixa lixo no chao e gasta recursos; avalia risco.
+  PVP: ATENÇÃO — deixa lixo no chão e gasta recursos; avalia risco.
 ]]
 
 local ITEM_GOLD, ITEM_PLAT, ITEM_CRYSTAL = 3031, 3035, 3043
@@ -1416,12 +1409,11 @@ macro(420, "Anti Push", "Shift+G", function()
   end
 end)
 
-
 -- ========== 018_push_control.lua ==========
 
 --[[
-  018_push_control.lua  Push assistido: destino sob cursor, vitima por target,
-  aproxima e empurra ate o tile destino.
+  018_push_control.lua — Push assistido: destino sob cursor, vítima por target,
+  aproxima e empurra até o tile destino.
 
   Depende de: 002_storage_init.lua (`knightTrim`, `knightFlashBtn`, `knightIsWalking`,
   `knightEnsureStorage`).
@@ -1553,19 +1545,18 @@ macro(220, function()
   pcall(function() g_game.move(creature, np) end)
 end)
 
-
 -- ========== 019_exiva.lua ==========
 
 --[[
-  019_exiva.lua  Exiva, etiqueta de estado e grelha de runa (direccao).
+  019_exiva.lua — Exiva, etiqueta de estado e grelha de runa (direcção).
 
-  Dispara `say('exiva "nome"')` a partir do nome manual em storage ou do ultimo alvo player
+  Dispara `say('exiva "nome"')` a partir do nome manual em storage ou do último alvo player
   (003_damage_capture / criatura em attack). `onTextMessage` filtra Game + Look, cruza com lastExivaName e
   janela temporal para preencher storage + UI.
 
-  No pack ordenado: penultimo script antes do HUD (`020_status_hud.lua`).
+  No pack ordenado: penúltimo script antes do HUD (`020_status_hud.lua`).
   Depende de: 002_storage_init.lua, 003 recomendado.
-  PVE/PVP: Exiva util sobretudo em PVP; parsing tolera EN e PT comuns.
+  PVE/PVP: Exiva útil sobretudo em PVP; parsing tolera EN e PT comuns.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -1607,16 +1598,16 @@ for _, p in ipairs({
 end
 -- PT comum (cliente/servidor)
 for _, s in ipairs({
+  { "está no andar de cima", "[+] acima" },
   { "esta no andar de cima", "[+] acima" },
-  { "esta no andar de cima", "[+] acima" },
-  { "esta no andar de baixo", "[-] abaixo" },
+  { "está no andar de baixo", "[-] abaixo" },
   { "esta no andar de baixo", "[-] abaixo" },
   { "muito longe a ", "", "muito longe " },
   { "longe a ", "", "longe " },
 }) do
   EX_PH[#EX_PH + 1] = s
 end
--- Direccoes escritas por extenso em PT (ex.: "a nordeste")
+-- Direcções escritas por extenso em PT (ex.: "a nordeste")
 for _, d in ipairs(EX_DIRS) do
   if d[3] and d[3] ~= "" then
     EX_PH[#EX_PH + 1] = { "a " .. d[3], "[" .. d[2] .. "] ", d[3] }
@@ -1626,7 +1617,7 @@ for _, s in ipairs({
   { "is standing next to you", "[~] ao seu lado" }, { "standing next to you", "[~] ao lado" },
   { "next to you", "[~] ao lado" }, { "is above you", "[+] acima" }, { "is below you", "[-] abaixo" },
   { "above you", "[+] acima" }, { "below you", "[-] abaixo" },
-  { "esta ao seu lado", "[~] ao lado" }, { "esta ao seu lado", "[~] ao lado" },
+  { "está ao seu lado", "[~] ao lado" }, { "esta ao seu lado", "[~] ao lado" },
   { "ao seu lado", "[~] ao lado" }, { "ao lado de ti", "[~] ao lado" },
 }) do
   EX_PH[#EX_PH + 1] = s
@@ -1656,7 +1647,7 @@ local function parseExivaDist(msg)
     return "0-4 sqm"
   end
   if txt:find("very far", 1, true) or txt:find("muito longe", 1, true) then return "251+ sqm" end
-  if txt:find("far to the", 1, true) or txt:find("esta longe", 1, true) or txt:find("esta longe", 1, true) then
+  if txt:find("far to the", 1, true) or txt:find("está longe", 1, true) or txt:find("esta longe", 1, true) then
     return "101-250 sqm"
   end
   if txt:find("to the", 1, true) or txt:find(" a nor", 1, true) or txt:find(" a sul", 1, true)
@@ -1721,8 +1712,8 @@ btnExivaLast = addButton("btn_exiva_last", "Exiva Last [Shift+R]", exivaLast)
 hotkey("5", exivaNome)
 hotkey("Shift+R", exivaLast)
 
---- Ordem: botoes  texto Exiva  grelha (layout por ancoras + `grid_wrap` centrado  mesmo padrao do script
---- monolitico antigo; evita `layout: grid` com celulas que sumiam no teu OTC).
+--- Ordem: botões → texto Exiva → grelha (layout por âncoras + `grid_wrap` centrado — mesmo padrão do script
+--- monolítico antigo; evita `layout: grid` com células que sumiam no teu OTC).
 local statusLabel = addLabel("knight_exiva_status", "Exiva: -")
 pcall(function() statusLabel:setColor("#dddddd") end)
 pcall(function() statusLabel:setTextWrap(true) end)
@@ -1979,16 +1970,15 @@ macro(200, function()
   refreshGrid(cachedExDir or nil)
 end)
 
-
 -- ========== 020_status_hud.lua ==========
 
 --[[
-  020_status_hud.lua  Painel de estado (storage alimentado por 003, 012, 013, push scripts, etc.).
+  020_status_hud.lua — Painel de estado (storage alimentado por 003, 012, 013, push scripts, etc.).
 
-  Linhas: ultimo que te atacou, ultimo alvo atacado, lock/chase, follow, push, modo derivado
+  Linhas: último que te atacou, último alvo atacado, lock/chase, follow, push, modo derivado
   por prioridade (push > follow > chase > lock > idle).
 
-  No pack ordenado: ultimo script (depois de `019_exiva.lua`).
+  No pack ordenado: último script (depois de `019_exiva.lua`).
   Depende de: 002_storage_init.lua (`knightEnsureStorage`, `knightTrim`).
 ]]
 
@@ -2060,7 +2050,6 @@ macro(280, function()
   end
   setHud(6, mode, mc)
 end)
-
 
 -- ========== 021_auto_ring_crowd.lua ==========
 

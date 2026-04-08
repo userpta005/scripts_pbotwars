@@ -1,5 +1,5 @@
 --[[
-  008_anti_paralyze.lua — Anti paralyse (simplificado).
+  008_anti_paralyze.lua — Anti paralyse (gate global mais curto).
   Depende de: 002_storage_init.lua
 ]]
 
@@ -13,10 +13,10 @@ local MIN_MANA = 60
 knightAntiParalyzeMacro = macro(100, "Anti Paralyze", "Shift+3", function()
   if not isParalyzed or not isParalyzed() then return end
   if not mana or mana() < MIN_MANA then return end
-  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
-  -- Prioriza resposta ao paralyze com gate global mais curto.
+  if type(now) ~= "number" then return end
+  if (now - lastCast) < GAP_MS then return end
   if not knightGlobalCastReady(200) then return end
   knightSpellSay(SPELL)
-  lastCast = knightNow()
+  lastCast = now
   knightTouchGlobalCast()
 end)

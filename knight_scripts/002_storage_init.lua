@@ -1,7 +1,8 @@
 --[[
-  002_storage_init.lua — Base mínima do knight_scripts (PbotWars / OTCv8 game_bot).
+  002_storage_init.lua — Base do knight_scripts (PbotWars / OTCv8 game_bot).
 
-  Gate global de cast evita colisão de say() entre macros.
+  Tempos: apenas `now` do game_bot (sem relogios misturados).
+  Entre spells: so `knightGlobalCastReady` / `knightTouchGlobalCast` (ms configuravel).
   Vertical engine factory partilhada por 012 (chase) e 013 (follow).
   Walk memory helper evita re-path spam no mesmo destino.
 ]]
@@ -10,10 +11,6 @@ storage = (type(storage) == "table" and storage) or {}
 
 KNIGHT_EXORI_GAUGE_SPELL = KNIGHT_EXORI_GAUGE_SPELL or "exori gauge"
 KNIGHT_EXORI_GAUGE_MIN_MANA = KNIGHT_EXORI_GAUGE_MIN_MANA or 400
-
-function knightSupportGap()
-  return 1500
-end
 
 function knightSupportMacroEnabled(macroRef)
   if not macroRef then return false end
@@ -98,24 +95,11 @@ function knightSpellSay(text)
   end
 end
 
-function knightNow()
-  local n = now
-  if type(n) == "number" and n >= 0 then
-    if type(storage) == "table" then storage.__knightLastNow = n end
-    return n
-  end
-  if type(storage) == "table" and type(storage.__knightLastNow) == "number" then
-    return storage.__knightLastNow
-  end
-  if os and os.clock then
-    return math.floor(os.clock() * 1000)
-  end
-  return 0
-end
-
+--- Cooldown local da spell + mana (usa so `now` do bot).
 function knightSpellReady(lastAt, gapMs, minMana)
+  if type(now) ~= "number" then return false end
   lastAt = lastAt or 0
-  if (knightNow() - lastAt) < gapMs then return false end
+  if (now - lastAt) < gapMs then return false end
   if minMana and mana then
     local okM, m = pcall(function() return mana() end)
     if not okM or type(m) ~= "number" or m < minMana then return false end
@@ -123,24 +107,19 @@ function knightSpellReady(lastAt, gapMs, minMana)
   return true
 end
 
---- Gate global: impede duas macros de spell de dispararem say() em janela curta.
+--- Minimo de ms entre qualquer say() de spell deste pacote (anti-colisao).
 function knightGlobalCastReady(minGapMs)
+  if type(now) ~= "number" then return false end
   local last = storage._lastGlobalCastAt or 0
-  if (knightNow() - last) < (minGapMs or 600) then return false end
-  return true
+  if type(last) ~= "number" or last <= 0 then return true end
+  if now < last then return true end
+  return (now - last) >= (minGapMs or 600)
 end
 
 function knightTouchGlobalCast()
-  storage._lastGlobalCastAt = knightNow()
-end
-
--- Stubs vazios: código antigo ou monólito antigo podem ainda referenciar.
-function knightSupportShouldDefer() return false end
-function knightSupportPriorityRegister() end
-function knightTouchSupportCast() end
-function knightCanCastSpell() return true end
-function knightSupportTimingAndSpellOk(spell, lastAt, localGapMs, minMana)
-  return knightSpellReady(lastAt, localGapMs, minMana)
+  if type(now) == "number" then
+    storage._lastGlobalCastAt = now
+  end
 end
 
 function knightAttackingCreature()
