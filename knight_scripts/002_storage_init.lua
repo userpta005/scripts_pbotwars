@@ -1,90 +1,31 @@
 --[[
-  002_storage_init.lua — Base do pacote knight_scripts (helpers + `storage`).
+  002_storage_init.lua — Base mínima do knight_scripts (PbotWars / OTCv8 game_bot).
 
-  No pack ordenado, vem logo a seguir a `001_pvp_manual_mode.lua` (só regista UI; este ficheiro
-  define funções usadas pelo resto). Sem o 001, podes carregar este como primeiro script.
-
-  Referência OTClient v8 (`otclientv8/modules/game_bot`): contexto expõe `say` (= g_game.talk),
-  `turn`, `pos`, `mana`, `canCast`, `macro`, `onTextMessage`, `getContainers`, condições em
-  `player_conditions.lua` (`hasHaste`, `isParalyzed`, `hasManaShield`, `hasPartyBuff`, …).
-
-  Convenção: prefixo `00N_*.lua` por ordem crescente. Helpers centralizam `pcall` contra APIs
-  C++ instáveis (mortes, logout, lag).
-
-  PVE/PVP: nomes de lock/correspondência trim + case-insensitive; distâncias em Chebyshev,
-  consistentes com `getDistanceBetween` do bot.
+  Gate global de cast evita colisão de say() entre macros.
+  Vertical engine factory partilhada por 012 (chase) e 013 (follow).
+  Walk memory helper evita re-path spam no mesmo destino.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
 
---- Espaço mínimo (ms) entre spells que chamam `knightTouchSupportCast()` (gauge, utamo, haste,
---- exeta, anti-paralyze, mas hur, strike). Evita colisão no mesmo “slot” de grupo/recarga.
-KNIGHT_SUPPORT_CAST_GAP = KNIGHT_SUPPORT_CAST_GAP or 1500
-
---- Spell e mana mínima para o macro 004_auto_exori_gauge.
 KNIGHT_EXORI_GAUGE_SPELL = KNIGHT_EXORI_GAUGE_SPELL or "exori gauge"
 KNIGHT_EXORI_GAUGE_MIN_MANA = KNIGHT_EXORI_GAUGE_MIN_MANA or 400
 
---- Prioridade do slot partilhado: índices menores têm precedência no `knightSupportShouldDefer`.
-KNIGHT_SUPPORT_PRIORITY_ORDER = KNIGHT_SUPPORT_PRIORITY_ORDER or {
-  "anti_paralyze",
-  "exori_gauge",
-  "utamo_tempo",
-  "haste",
-  "exeta_res",
-  "mas_exori_hur",
-  "exori_strike",
-}
-
---- @type table<string, fun(): boolean> mapas `id` → função “quer cast agora” (registo por script).
-knightSupportPriorityClaims = knightSupportPriorityClaims or {}
-
---- @return number gap efetivo em ms
 function knightSupportGap()
-  return KNIGHT_SUPPORT_CAST_GAP or 1500
+  return 1500
 end
 
---- Macro do bot ligada? (`macro`:on()/off() do OTClient).
---- @param macroRef userdata|nil
---- @return boolean
 function knightSupportMacroEnabled(macroRef)
   if not macroRef then return false end
   local ok, on = pcall(function() return macroRef:isOn() end)
-  return ok and on == true
-end
-
---- Alias semântico para macros que não são “suporte” (ex.: Auto Target).
-knightMacroIsOn = knightSupportMacroEnabled
-
---- Regista pedido de prioridade para o sistema de defer (chamar uma vez por script).
---- @param id string identificador em KNIGHT_SUPPORT_PRIORITY_ORDER
---- @param claimFn fun(): boolean
-function knightSupportPriorityRegister(id, claimFn)
-  if type(id) ~= "string" or type(claimFn) ~= "function" then return end
-  knightSupportPriorityClaims[id] = claimFn
-end
-
---- @param myId string
---- @return boolean true se algum id de prioridade superior “reclama” o próximo cast
-function knightSupportShouldDefer(myId)
-  if type(KNIGHT_SUPPORT_PRIORITY_ORDER) ~= "table" or type(myId) ~= "string" then return false end
-  local myPos
-  for i, rid in ipairs(KNIGHT_SUPPORT_PRIORITY_ORDER) do
-    if rid == myId then myPos = i break end
-  end
-  if not myPos then return false end
-  for i = 1, myPos - 1 do
-    local fn = knightSupportPriorityClaims[KNIGHT_SUPPORT_PRIORITY_ORDER[i]]
-    if type(fn) == "function" then
-      local ok, wants = pcall(fn)
-      if ok and wants then return true end
-    end
-  end
+  if ok and on then return true end
+  ok, on = pcall(function() return macroRef:isEnabled() end)
+  if ok and on then return true end
   return false
 end
 
---- Garante chaves por omissão em `storage` (não sobrescreve valores existentes).
---- @param defaults table|nil
+knightMacroIsOn = knightSupportMacroEnabled
+
 function knightEnsureStorage(defaults)
   if type(defaults) ~= "table" then return end
   if type(storage) ~= "table" then storage = {} end
@@ -93,17 +34,11 @@ function knightEnsureStorage(defaults)
   end
 end
 
---- @param s any
---- @return string
 function knightTrim(s)
   if type(s) ~= "string" then return "" end
   return s:match("^%s*(.-)%s*$") or ""
 end
 
---- Compara nome do lock PVP com nome de criatura (trim + case-insensitive se diferir).
---- @param lockName string|nil
---- @param creatureName string|nil
---- @return boolean
 function knightNameMatchLock(lockName, creatureName)
   local a = knightTrim(lockName or "")
   local b = knightTrim(creatureName or "")
@@ -112,16 +47,12 @@ function knightNameMatchLock(lockName, creatureName)
   return string.lower(a) == string.lower(b)
 end
 
---- Jogador em movimento (`player:isWalking`), com `pcall`.
---- @return boolean
 function knightIsWalking()
   if not player or not player.isWalking then return false end
   local ok, w = pcall(function() return player:isWalking() end)
   return ok and w == true
 end
 
---- Flash visual breve em botão (opcional `schedule` do bot).
---- @param b userdata|nil
 function knightFlashBtn(b)
   if not b then return end
   pcall(function() b:setImageColor("green") end)
@@ -130,10 +61,6 @@ function knightFlashBtn(b)
   end
 end
 
---- `g_map.getTile` + `getTopUseThing` + `g_game.use` (escadas, alavancas, etc.).
---- @param x number
---- @param y number
---- @param z number
 function knightMapUseTopThing(x, y, z)
   if not g_map or not g_map.getTile or not g_game or not g_game.use then return end
   pcall(function()
@@ -143,61 +70,84 @@ function knightMapUseTopThing(x, y, z)
   end)
 end
 
---- @return boolean
 function knightGameAttackReady()
   local g = g_game
   return not not (g and g.isAttacking and g.getAttackingCreature and g.attack)
 end
 
---- `g_game.attack(creature)` sem rebentar se o cliente estiver incompleto.
---- @param creature userdata|nil
 function knightGameAttack(creature)
   if not creature or not knightGameAttackReady() then return end
   pcall(function() g_game.attack(creature) end)
 end
 
---- Chat de texto activo (não spam de spell ao escrever).
---- @return boolean
 function knightChatOpen()
-  return modules.game_console and modules.game_console.isChatEnabled and
-      modules.game_console:isChatEnabled()
+  local c = modules and modules.game_console
+  if not c then return false end
+  local ok, open = pcall(function() return c:isChatEnabled() end)
+  return ok and open == true
 end
 
---- ms desde o último `knightTouchSupportCast`.
-function knightMsSinceSupportCast()
-  if type(storage) ~= "table" then return 1e12 end
-  return now - (storage.lastSupportCastAt or 0)
+function knightSpellSay(text)
+  if type(text) ~= "string" or text == "" then return end
+  if say then
+    local ok = pcall(function() say(text) end)
+    if ok then return end
+  end
+  if g_game and g_game.talk then
+    pcall(function() g_game.talk(text) end)
+  end
 end
 
---- Marca instante do último cast que ocupa o slot partilhado de suporte.
-function knightTouchSupportCast()
-  if type(storage) == "table" then storage.lastSupportCastAt = now end
+function knightNow()
+  local n = now
+  if type(n) == "number" and n >= 0 then
+    if type(storage) == "table" then storage.__knightLastNow = n end
+    return n
+  end
+  if type(storage) == "table" and type(storage.__knightLastNow) == "number" then
+    return storage.__knightLastNow
+  end
+  if os and os.clock then
+    return math.floor(os.clock() * 1000)
+  end
+  return 0
 end
 
---- Cooldown local (por spell) + global de suporte + mana + `canCast`. Não inclui defer nem chat.
---- @param spell string
---- @param lastAt number|nil timestamp `now` do último cast desta spell
---- @param localGapMs number
---- @param minMana number|nil
---- @return boolean
-function knightSupportTimingAndSpellOk(spell, lastAt, localGapMs, minMana)
+function knightSpellReady(lastAt, gapMs, minMana)
   lastAt = lastAt or 0
-  if (now - lastAt) < localGapMs then return false end
-  if knightMsSinceSupportCast() < knightSupportGap() then return false end
-  if minMana and mana and mana() < minMana then return false end
-  if canCast and not canCast(spell) then return false end
+  if (knightNow() - lastAt) < gapMs then return false end
+  if minMana and mana then
+    local okM, m = pcall(function() return mana() end)
+    if not okM or type(m) ~= "number" or m < minMana then return false end
+  end
   return true
 end
 
---- Posição da criatura atacada pelo cliente e posição local.
---- @return userdata|nil
+--- Gate global: impede duas macros de spell de dispararem say() em janela curta.
+function knightGlobalCastReady(minGapMs)
+  local last = storage._lastGlobalCastAt or 0
+  if (knightNow() - last) < (minGapMs or 600) then return false end
+  return true
+end
+
+function knightTouchGlobalCast()
+  storage._lastGlobalCastAt = knightNow()
+end
+
+-- Stubs vazios: código antigo ou monólito antigo podem ainda referenciar.
+function knightSupportShouldDefer() return false end
+function knightSupportPriorityRegister() end
+function knightTouchSupportCast() end
+function knightCanCastSpell() return true end
+function knightSupportTimingAndSpellOk(spell, lastAt, localGapMs, minMana)
+  return knightSpellReady(lastAt, localGapMs, minMana)
+end
+
 function knightAttackingCreature()
   if not g_game or not g_game.isAttacking or not g_game.isAttacking() then return nil end
   return g_game.getAttackingCreature and g_game.getAttackingCreature() or nil
 end
 
---- Posição do alvo de ataque; nil se não houver alvo válido.
---- @return table|nil
 function knightAttackingPosition()
   local t = knightAttackingCreature()
   if not t then return nil end
@@ -206,9 +156,6 @@ function knightAttackingPosition()
   return nil
 end
 
---- Par `(tp, mp)` para geometria face ao alvo (009/010). `tp` = alvo, `mp` = jogador.
---- @param creature userdata|nil
---- @return table|nil tp, table|nil mp
 function knightTargetPosPair(creature)
   local mp = pos and pos() or nil
   if not creature or not mp then return nil, nil end
@@ -217,11 +164,6 @@ function knightTargetPosPair(creature)
   return tp, mp
 end
 
---- Resolve jogador pelo nome armado em `storage._target` (PVP). Usa `getPlayerByName` e,
---- em fallback, `getSpectators()` (OTClient game_bot `map.lua`).
---- @param lockName string|nil
---- @param sameFloorOnly boolean se true, só aceita criatura no mesmo `posz()` que o local player
---- @return userdata|nil
 function knightFindLockedPlayer(lockName, sameFloorOnly)
   local tname = knightTrim(lockName or "")
   if tname == "" then return nil end
@@ -269,9 +211,6 @@ function knightFindLockedPlayer(lockName, sameFloorOnly)
   return nil
 end
 
---- Jogador visível em qualquer andar pelo nome (exani / degraus / follow & chase).
---- @param lockName string|nil
---- @return userdata|nil
 function knightSeePlayerByNameAnywhere(lockName)
   local n = knightTrim(lockName or "")
   if n == "" then return nil end
@@ -286,13 +225,200 @@ function knightSeePlayerByNameAnywhere(lockName)
   return nil
 end
 
---- ID estável da criatura (0 se inválido).
---- @param creature userdata|nil
---- @return number
 function knightSafeCreatureId(creature)
   if not creature then return 0 end
   local ok, id = pcall(function() return creature:getId() end)
   return (ok and type(id) == "number") and id or 0
+end
+
+--- Vertical engine factory: partilhado entre chase (012) e follow (013).
+--- prefix determina chaves em storage ("_chase" ou "_follow").
+function knightCreateVerticalEngine(prefix)
+  local WINDOW_MS = 4800
+  local SCAN_RADIUS = 2
+  local EXANI_GAP_MS = 900
+  local VANISH_WALK_MS = 90
+  local VANISH_SURROUND_MS = 750
+  local FLOOR_STEPS = 4
+  local FLOOR_STEP_MS = 115
+  local FOOT_RETRY_MS = { 60, 160 }
+  local MISMATCH_ARM_MS = 550
+
+  local adjIndex = 0
+  local offPlaneSince = nil
+  local lastExaniAt = 0
+
+  local kVU = prefix .. "VerticalUntil"
+  local kFx = prefix .. "LadderFx"
+  local kFy = prefix .. "LadderFy"
+  local kFz = prefix .. "LadderFz"
+
+  local E = {}
+
+  function E.armed()
+    local u = storage[kVU]
+    return type(u) == "number" and u > now
+  end
+
+  function E.arm()
+    storage[kVU] = now + WINDOW_MS
+  end
+
+  function E.clear()
+    storage[kVU] = 0
+    offPlaneSince = nil
+    storage[kFx] = nil
+    storage[kFy] = nil
+    storage[kFz] = nil
+    adjIndex = 0
+  end
+
+  function E.setLadderFoot(oldPos)
+    if not oldPos then return end
+    storage[kFx] = oldPos.x
+    storage[kFy] = oldPos.y
+    storage[kFz] = oldPos.z
+    adjIndex = 0
+  end
+
+  function E.ladderFootXY(lz)
+    local fx, fy, fz = storage[kFx], storage[kFy], storage[kFz]
+    if type(fx) ~= "number" or type(fy) ~= "number" or type(fz) ~= "number" then return nil, nil end
+    if fz ~= lz then return nil, nil end
+    return fx, fy
+  end
+
+  function E.useSurrounding()
+    for i = -1, 1 do
+      for j = -1, 1 do
+        knightMapUseTopThing(posx() + i, posy() + j, posz())
+      end
+    end
+  end
+
+  function E.tryExaniTera()
+    if now - lastExaniAt < EXANI_GAP_MS then return end
+    lastExaniAt = now
+    if say then pcall(function() say("exani tera") end) end
+  end
+
+  function E.tryLadderUsesAtFoot(wx, wy, lz)
+    local mp = pos and pos() or nil
+    if not mp or mp.z ~= lz then return end
+    local cands = {}
+    for dx = -SCAN_RADIUS, SCAN_RADIUS do
+      for dy = -SCAN_RADIUS, SCAN_RADIUS do
+        local x, y = wx + dx, wy + dy
+        local t = { x = x, y = y, z = lz }
+        if getDistanceBetween(mp, t) <= 1 then
+          local df = getDistanceBetween({ x = wx, y = wy, z = lz }, t)
+          cands[#cands + 1] = { x = x, y = y, df = df }
+        end
+      end
+    end
+    table.sort(cands, function(a, b) return a.df < b.df end)
+    if #cands == 0 then return end
+    adjIndex = (adjIndex % #cands) + 1
+    local c = cands[adjIndex]
+    knightMapUseTopThing(c.x, c.y, lz)
+  end
+
+  function E.onTargetMoved(creature, newPos, oldPos, targetName)
+    if not creature or not oldPos then return end
+    local nOk, cname = pcall(function() return creature:getName() end)
+    if not nOk or type(cname) ~= "string" then return end
+    if targetName == "" or not knightNameMatchLock(targetName, cname) then return end
+
+    if not newPos then
+      E.arm()
+      E.setLadderFoot(oldPos)
+      schedule(VANISH_WALK_MS, function()
+        if autoWalk then pcall(function() autoWalk(oldPos) end) end
+      end)
+      schedule(VANISH_SURROUND_MS, function()
+        if E.armed() then E.useSurrounding() end
+      end)
+    elseif oldPos.z ~= newPos.z then
+      E.arm()
+      E.setLadderFoot(oldPos)
+      local wentUp = newPos.z < oldPos.z
+      if autoWalk then pcall(function() autoWalk(oldPos) end) end
+      if wentUp then
+        knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z)
+        for _, d in ipairs(FOOT_RETRY_MS) do
+          schedule(d, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
+        end
+        schedule(FOOT_RETRY_MS[#FOOT_RETRY_MS] + 80, function()
+          E.tryLadderUsesAtFoot(oldPos.x, oldPos.y, oldPos.z)
+        end)
+        knightMapUseTopThing(newPos.x, newPos.y - 1, newPos.z)
+      else
+        schedule(40, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
+        schedule(130, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
+        schedule(220, function() E.tryLadderUsesAtFoot(oldPos.x, oldPos.y, oldPos.z) end)
+      end
+      for i = 1, FLOOR_STEPS do
+        schedule(i * FLOOR_STEP_MS, function()
+          if not E.armed() then return end
+          if autoWalk and getDistanceBetween(pos(), oldPos) > 1 then
+            pcall(function() autoWalk(oldPos) end)
+          end
+          if getDistanceBetween(pos(), oldPos) == 0 and posz() > newPos.z
+              and not knightSeePlayerByNameAnywhere(targetName) then
+            E.tryExaniTera()
+          end
+        end)
+      end
+    end
+  end
+
+  function E.onLocalPlayerAscend(creature, newPos, oldPos, targetName)
+    if not newPos or not oldPos or not creature then return end
+    local nOk, cname = pcall(function() return creature:getName() end)
+    local pOk, pname = pcall(function() return player:getName() end)
+    if not nOk or not pOk or type(cname) ~= "string" or type(pname) ~= "string" or cname ~= pname then return end
+    if newPos.z <= oldPos.z then return end
+    if targetName == "" or not E.armed() then return end
+    if knightSeePlayerByNameAnywhere(targetName) then return end
+    E.tryExaniTera()
+    E.useSurrounding()
+  end
+
+  function E.checkOffPlane(lpOk, lp, lz, ffx)
+    if lpOk and lp and lp.z ~= lz then
+      if not offPlaneSince then offPlaneSince = now end
+      if not E.armed() and (now - offPlaneSince) >= MISMATCH_ARM_MS then
+        E.arm()
+      end
+    elseif ffx and (not lpOk or not lp) then
+      if not offPlaneSince then offPlaneSince = now end
+      if not E.armed() and (now - offPlaneSince) >= MISMATCH_ARM_MS then
+        E.arm()
+      end
+    end
+  end
+
+  return E
+end
+
+--- Walk memory helper: evita re-path spam no mesmo destino.
+function knightCreateWalkMemory(walkGapMs, rewalkMs)
+  local lastX, lastY, lastZ = nil, nil, nil
+  local lastAt = 0
+  local M = {}
+  function M.clear()
+    lastX, lastY, lastZ = nil, nil, nil
+  end
+  function M.shouldWalk(tx, ty, tz)
+    if now - lastAt < walkGapMs then return false end
+    if lastX ~= tx or lastY ~= ty or lastZ ~= tz then return true end
+    return (now - lastAt) >= rewalkMs
+  end
+  function M.remember(tx, ty, tz)
+    lastX, lastY, lastZ = tx, ty, tz
+    lastAt = now
+  end
+  return M
 end
 
 knightEnsureStorage({
@@ -320,5 +446,5 @@ knightEnsureStorage({
   lastExivaDist = "",
   exivaManualName = "",
   lastExivaTime = 0,
-  lastSupportCastAt = 0,
+  _lastGlobalCastAt = 0,
 })

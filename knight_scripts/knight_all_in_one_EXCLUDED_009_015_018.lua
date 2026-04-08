@@ -1,16 +1,15 @@
 --[[
   knight_all_in_one_EXCLUDED_009_015_018.lua
 
-  Monolito para copiar/colar no game_bot (OTClient v8). Ordem = perfil ordenado:
-    001 PVP manual, 002–018 núcleo, 019 exiva, 020 status HUD.
-  EXCETO (não incluídos neste ficheiro):
-    - 009_anti_kick.lua
-    - 015_id_cursor_map.lua
-    - 018_push_control.lua
-
-  Para ficheiros separados, ver knight_scripts/.
+  Monólito auto-gerado a partir de knight_scripts/*.lua.
+  NÃO EDITAR MANUALMENTE — regenerar a partir dos modulares.
+  Ordem: 001, 002, 003, 004–008, 010, 011, 012–014, 016–017, 019–020.
+  EXCLUI: 009_anti_kick.lua, 015_id_cursor_map.lua, 018_push_control.lua
 ]]
 
+if type(setDefaultTab) == "function" then
+  setDefaultTab("Main")
+end
 
 
 -- ========== 001_pvp_manual_mode.lua ==========
@@ -62,92 +61,33 @@ end)
 -- ========== 002_storage_init.lua ==========
 
 --[[
-  002_storage_init.lua — Base do pacote knight_scripts (helpers + `storage`).
+  002_storage_init.lua — Base mínima do knight_scripts (PbotWars / OTCv8 game_bot).
 
-  No pack ordenado, vem logo a seguir a `001_pvp_manual_mode.lua` (só regista UI; este ficheiro
-  define funções usadas pelo resto). Sem o 001, podes carregar este como primeiro script.
-
-  Referência OTClient v8 (`otclientv8/modules/game_bot`): contexto expõe `say` (= g_game.talk),
-  `turn`, `pos`, `mana`, `canCast`, `macro`, `onTextMessage`, `getContainers`, condições em
-  `player_conditions.lua` (`hasHaste`, `isParalyzed`, `hasManaShield`, `hasPartyBuff`, …).
-
-  Convenção: prefixo `00N_*.lua` por ordem crescente. Helpers centralizam `pcall` contra APIs
-  C++ instáveis (mortes, logout, lag).
-
-  PVE/PVP: nomes de lock/correspondência trim + case-insensitive; distâncias em Chebyshev,
-  consistentes com `getDistanceBetween` do bot.
+  Gate global de cast evita colisão de say() entre macros.
+  Vertical engine factory partilhada por 012 (chase) e 013 (follow).
+  Walk memory helper evita re-path spam no mesmo destino.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
 
---- Espaço mínimo (ms) entre spells que chamam `knightTouchSupportCast()` (gauge, utamo, haste,
---- exeta, anti-paralyze, mas hur, strike). Evita colisão no mesmo “slot” de grupo/recarga.
-KNIGHT_SUPPORT_CAST_GAP = KNIGHT_SUPPORT_CAST_GAP or 1500
-
---- Spell e mana mínima para o macro 004_auto_exori_gauge.
 KNIGHT_EXORI_GAUGE_SPELL = KNIGHT_EXORI_GAUGE_SPELL or "exori gauge"
 KNIGHT_EXORI_GAUGE_MIN_MANA = KNIGHT_EXORI_GAUGE_MIN_MANA or 400
 
---- Prioridade do slot partilhado: índices menores têm precedência no `knightSupportShouldDefer`.
-KNIGHT_SUPPORT_PRIORITY_ORDER = KNIGHT_SUPPORT_PRIORITY_ORDER or {
-  "anti_paralyze",
-  "exori_gauge",
-  "utamo_tempo",
-  "haste",
-  "exeta_res",
-  "mas_exori_hur",
-  "exori_strike",
-}
-
---- @type table<string, fun(): boolean> mapas `id` → função “quer cast agora” (registo por script).
-knightSupportPriorityClaims = knightSupportPriorityClaims or {}
-
---- @return number gap efetivo em ms
 function knightSupportGap()
-  return KNIGHT_SUPPORT_CAST_GAP or 1500
+  return 1500
 end
 
---- Macro do bot ligada? (`macro`:on()/off() do OTClient).
---- @param macroRef userdata|nil
---- @return boolean
 function knightSupportMacroEnabled(macroRef)
   if not macroRef then return false end
   local ok, on = pcall(function() return macroRef:isOn() end)
-  return ok and on == true
-end
-
---- Alias semântico para macros que não são “suporte” (ex.: Auto Target).
-knightMacroIsOn = knightSupportMacroEnabled
-
---- Regista pedido de prioridade para o sistema de defer (chamar uma vez por script).
---- @param id string identificador em KNIGHT_SUPPORT_PRIORITY_ORDER
---- @param claimFn fun(): boolean
-function knightSupportPriorityRegister(id, claimFn)
-  if type(id) ~= "string" or type(claimFn) ~= "function" then return end
-  knightSupportPriorityClaims[id] = claimFn
-end
-
---- @param myId string
---- @return boolean true se algum id de prioridade superior “reclama” o próximo cast
-function knightSupportShouldDefer(myId)
-  if type(KNIGHT_SUPPORT_PRIORITY_ORDER) ~= "table" or type(myId) ~= "string" then return false end
-  local myPos
-  for i, rid in ipairs(KNIGHT_SUPPORT_PRIORITY_ORDER) do
-    if rid == myId then myPos = i break end
-  end
-  if not myPos then return false end
-  for i = 1, myPos - 1 do
-    local fn = knightSupportPriorityClaims[KNIGHT_SUPPORT_PRIORITY_ORDER[i]]
-    if type(fn) == "function" then
-      local ok, wants = pcall(fn)
-      if ok and wants then return true end
-    end
-  end
+  if ok and on then return true end
+  ok, on = pcall(function() return macroRef:isEnabled() end)
+  if ok and on then return true end
   return false
 end
 
---- Garante chaves por omissão em `storage` (não sobrescreve valores existentes).
---- @param defaults table|nil
+knightMacroIsOn = knightSupportMacroEnabled
+
 function knightEnsureStorage(defaults)
   if type(defaults) ~= "table" then return end
   if type(storage) ~= "table" then storage = {} end
@@ -156,17 +96,11 @@ function knightEnsureStorage(defaults)
   end
 end
 
---- @param s any
---- @return string
 function knightTrim(s)
   if type(s) ~= "string" then return "" end
   return s:match("^%s*(.-)%s*$") or ""
 end
 
---- Compara nome do lock PVP com nome de criatura (trim + case-insensitive se diferir).
---- @param lockName string|nil
---- @param creatureName string|nil
---- @return boolean
 function knightNameMatchLock(lockName, creatureName)
   local a = knightTrim(lockName or "")
   local b = knightTrim(creatureName or "")
@@ -175,16 +109,12 @@ function knightNameMatchLock(lockName, creatureName)
   return string.lower(a) == string.lower(b)
 end
 
---- Jogador em movimento (`player:isWalking`), com `pcall`.
---- @return boolean
 function knightIsWalking()
   if not player or not player.isWalking then return false end
   local ok, w = pcall(function() return player:isWalking() end)
   return ok and w == true
 end
 
---- Flash visual breve em botão (opcional `schedule` do bot).
---- @param b userdata|nil
 function knightFlashBtn(b)
   if not b then return end
   pcall(function() b:setImageColor("green") end)
@@ -193,10 +123,6 @@ function knightFlashBtn(b)
   end
 end
 
---- `g_map.getTile` + `getTopUseThing` + `g_game.use` (escadas, alavancas, etc.).
---- @param x number
---- @param y number
---- @param z number
 function knightMapUseTopThing(x, y, z)
   if not g_map or not g_map.getTile or not g_game or not g_game.use then return end
   pcall(function()
@@ -206,61 +132,84 @@ function knightMapUseTopThing(x, y, z)
   end)
 end
 
---- @return boolean
 function knightGameAttackReady()
   local g = g_game
   return not not (g and g.isAttacking and g.getAttackingCreature and g.attack)
 end
 
---- `g_game.attack(creature)` sem rebentar se o cliente estiver incompleto.
---- @param creature userdata|nil
 function knightGameAttack(creature)
   if not creature or not knightGameAttackReady() then return end
   pcall(function() g_game.attack(creature) end)
 end
 
---- Chat de texto activo (não spam de spell ao escrever).
---- @return boolean
 function knightChatOpen()
-  return modules.game_console and modules.game_console.isChatEnabled and
-      modules.game_console:isChatEnabled()
+  local c = modules and modules.game_console
+  if not c then return false end
+  local ok, open = pcall(function() return c:isChatEnabled() end)
+  return ok and open == true
 end
 
---- ms desde o último `knightTouchSupportCast`.
-function knightMsSinceSupportCast()
-  if type(storage) ~= "table" then return 1e12 end
-  return now - (storage.lastSupportCastAt or 0)
+function knightSpellSay(text)
+  if type(text) ~= "string" or text == "" then return end
+  if say then
+    local ok = pcall(function() say(text) end)
+    if ok then return end
+  end
+  if g_game and g_game.talk then
+    pcall(function() g_game.talk(text) end)
+  end
 end
 
---- Marca instante do último cast que ocupa o slot partilhado de suporte.
-function knightTouchSupportCast()
-  if type(storage) == "table" then storage.lastSupportCastAt = now end
+function knightNow()
+  local n = now
+  if type(n) == "number" and n >= 0 then
+    if type(storage) == "table" then storage.__knightLastNow = n end
+    return n
+  end
+  if type(storage) == "table" and type(storage.__knightLastNow) == "number" then
+    return storage.__knightLastNow
+  end
+  if os and os.clock then
+    return math.floor(os.clock() * 1000)
+  end
+  return 0
 end
 
---- Cooldown local (por spell) + global de suporte + mana + `canCast`. Não inclui defer nem chat.
---- @param spell string
---- @param lastAt number|nil timestamp `now` do último cast desta spell
---- @param localGapMs number
---- @param minMana number|nil
---- @return boolean
-function knightSupportTimingAndSpellOk(spell, lastAt, localGapMs, minMana)
+function knightSpellReady(lastAt, gapMs, minMana)
   lastAt = lastAt or 0
-  if (now - lastAt) < localGapMs then return false end
-  if knightMsSinceSupportCast() < knightSupportGap() then return false end
-  if minMana and mana and mana() < minMana then return false end
-  if canCast and not canCast(spell) then return false end
+  if (knightNow() - lastAt) < gapMs then return false end
+  if minMana and mana then
+    local okM, m = pcall(function() return mana() end)
+    if not okM or type(m) ~= "number" or m < minMana then return false end
+  end
   return true
 end
 
---- Posição da criatura atacada pelo cliente e posição local.
---- @return userdata|nil
+--- Gate global: impede duas macros de spell de dispararem say() em janela curta.
+function knightGlobalCastReady(minGapMs)
+  local last = storage._lastGlobalCastAt or 0
+  if (knightNow() - last) < (minGapMs or 600) then return false end
+  return true
+end
+
+function knightTouchGlobalCast()
+  storage._lastGlobalCastAt = knightNow()
+end
+
+-- Stubs vazios: código antigo ou monólito antigo podem ainda referenciar.
+function knightSupportShouldDefer() return false end
+function knightSupportPriorityRegister() end
+function knightTouchSupportCast() end
+function knightCanCastSpell() return true end
+function knightSupportTimingAndSpellOk(spell, lastAt, localGapMs, minMana)
+  return knightSpellReady(lastAt, localGapMs, minMana)
+end
+
 function knightAttackingCreature()
   if not g_game or not g_game.isAttacking or not g_game.isAttacking() then return nil end
   return g_game.getAttackingCreature and g_game.getAttackingCreature() or nil
 end
 
---- Posição do alvo de ataque; nil se não houver alvo válido.
---- @return table|nil
 function knightAttackingPosition()
   local t = knightAttackingCreature()
   if not t then return nil end
@@ -269,9 +218,6 @@ function knightAttackingPosition()
   return nil
 end
 
---- Par `(tp, mp)` para geometria face ao alvo (009/010). `tp` = alvo, `mp` = jogador.
---- @param creature userdata|nil
---- @return table|nil tp, table|nil mp
 function knightTargetPosPair(creature)
   local mp = pos and pos() or nil
   if not creature or not mp then return nil, nil end
@@ -280,11 +226,6 @@ function knightTargetPosPair(creature)
   return tp, mp
 end
 
---- Resolve jogador pelo nome armado em `storage._target` (PVP). Usa `getPlayerByName` e,
---- em fallback, `getSpectators()` (OTClient game_bot `map.lua`).
---- @param lockName string|nil
---- @param sameFloorOnly boolean se true, só aceita criatura no mesmo `posz()` que o local player
---- @return userdata|nil
 function knightFindLockedPlayer(lockName, sameFloorOnly)
   local tname = knightTrim(lockName or "")
   if tname == "" then return nil end
@@ -332,9 +273,6 @@ function knightFindLockedPlayer(lockName, sameFloorOnly)
   return nil
 end
 
---- Jogador visível em qualquer andar pelo nome (exani / degraus / follow & chase).
---- @param lockName string|nil
---- @return userdata|nil
 function knightSeePlayerByNameAnywhere(lockName)
   local n = knightTrim(lockName or "")
   if n == "" then return nil end
@@ -349,13 +287,200 @@ function knightSeePlayerByNameAnywhere(lockName)
   return nil
 end
 
---- ID estável da criatura (0 se inválido).
---- @param creature userdata|nil
---- @return number
 function knightSafeCreatureId(creature)
   if not creature then return 0 end
   local ok, id = pcall(function() return creature:getId() end)
   return (ok and type(id) == "number") and id or 0
+end
+
+--- Vertical engine factory: partilhado entre chase (012) e follow (013).
+--- prefix determina chaves em storage ("_chase" ou "_follow").
+function knightCreateVerticalEngine(prefix)
+  local WINDOW_MS = 4800
+  local SCAN_RADIUS = 2
+  local EXANI_GAP_MS = 900
+  local VANISH_WALK_MS = 90
+  local VANISH_SURROUND_MS = 750
+  local FLOOR_STEPS = 4
+  local FLOOR_STEP_MS = 115
+  local FOOT_RETRY_MS = { 60, 160 }
+  local MISMATCH_ARM_MS = 550
+
+  local adjIndex = 0
+  local offPlaneSince = nil
+  local lastExaniAt = 0
+
+  local kVU = prefix .. "VerticalUntil"
+  local kFx = prefix .. "LadderFx"
+  local kFy = prefix .. "LadderFy"
+  local kFz = prefix .. "LadderFz"
+
+  local E = {}
+
+  function E.armed()
+    local u = storage[kVU]
+    return type(u) == "number" and u > now
+  end
+
+  function E.arm()
+    storage[kVU] = now + WINDOW_MS
+  end
+
+  function E.clear()
+    storage[kVU] = 0
+    offPlaneSince = nil
+    storage[kFx] = nil
+    storage[kFy] = nil
+    storage[kFz] = nil
+    adjIndex = 0
+  end
+
+  function E.setLadderFoot(oldPos)
+    if not oldPos then return end
+    storage[kFx] = oldPos.x
+    storage[kFy] = oldPos.y
+    storage[kFz] = oldPos.z
+    adjIndex = 0
+  end
+
+  function E.ladderFootXY(lz)
+    local fx, fy, fz = storage[kFx], storage[kFy], storage[kFz]
+    if type(fx) ~= "number" or type(fy) ~= "number" or type(fz) ~= "number" then return nil, nil end
+    if fz ~= lz then return nil, nil end
+    return fx, fy
+  end
+
+  function E.useSurrounding()
+    for i = -1, 1 do
+      for j = -1, 1 do
+        knightMapUseTopThing(posx() + i, posy() + j, posz())
+      end
+    end
+  end
+
+  function E.tryExaniTera()
+    if now - lastExaniAt < EXANI_GAP_MS then return end
+    lastExaniAt = now
+    if say then pcall(function() say("exani tera") end) end
+  end
+
+  function E.tryLadderUsesAtFoot(wx, wy, lz)
+    local mp = pos and pos() or nil
+    if not mp or mp.z ~= lz then return end
+    local cands = {}
+    for dx = -SCAN_RADIUS, SCAN_RADIUS do
+      for dy = -SCAN_RADIUS, SCAN_RADIUS do
+        local x, y = wx + dx, wy + dy
+        local t = { x = x, y = y, z = lz }
+        if getDistanceBetween(mp, t) <= 1 then
+          local df = getDistanceBetween({ x = wx, y = wy, z = lz }, t)
+          cands[#cands + 1] = { x = x, y = y, df = df }
+        end
+      end
+    end
+    table.sort(cands, function(a, b) return a.df < b.df end)
+    if #cands == 0 then return end
+    adjIndex = (adjIndex % #cands) + 1
+    local c = cands[adjIndex]
+    knightMapUseTopThing(c.x, c.y, lz)
+  end
+
+  function E.onTargetMoved(creature, newPos, oldPos, targetName)
+    if not creature or not oldPos then return end
+    local nOk, cname = pcall(function() return creature:getName() end)
+    if not nOk or type(cname) ~= "string" then return end
+    if targetName == "" or not knightNameMatchLock(targetName, cname) then return end
+
+    if not newPos then
+      E.arm()
+      E.setLadderFoot(oldPos)
+      schedule(VANISH_WALK_MS, function()
+        if autoWalk then pcall(function() autoWalk(oldPos) end) end
+      end)
+      schedule(VANISH_SURROUND_MS, function()
+        if E.armed() then E.useSurrounding() end
+      end)
+    elseif oldPos.z ~= newPos.z then
+      E.arm()
+      E.setLadderFoot(oldPos)
+      local wentUp = newPos.z < oldPos.z
+      if autoWalk then pcall(function() autoWalk(oldPos) end) end
+      if wentUp then
+        knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z)
+        for _, d in ipairs(FOOT_RETRY_MS) do
+          schedule(d, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
+        end
+        schedule(FOOT_RETRY_MS[#FOOT_RETRY_MS] + 80, function()
+          E.tryLadderUsesAtFoot(oldPos.x, oldPos.y, oldPos.z)
+        end)
+        knightMapUseTopThing(newPos.x, newPos.y - 1, newPos.z)
+      else
+        schedule(40, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
+        schedule(130, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
+        schedule(220, function() E.tryLadderUsesAtFoot(oldPos.x, oldPos.y, oldPos.z) end)
+      end
+      for i = 1, FLOOR_STEPS do
+        schedule(i * FLOOR_STEP_MS, function()
+          if not E.armed() then return end
+          if autoWalk and getDistanceBetween(pos(), oldPos) > 1 then
+            pcall(function() autoWalk(oldPos) end)
+          end
+          if getDistanceBetween(pos(), oldPos) == 0 and posz() > newPos.z
+              and not knightSeePlayerByNameAnywhere(targetName) then
+            E.tryExaniTera()
+          end
+        end)
+      end
+    end
+  end
+
+  function E.onLocalPlayerAscend(creature, newPos, oldPos, targetName)
+    if not newPos or not oldPos or not creature then return end
+    local nOk, cname = pcall(function() return creature:getName() end)
+    local pOk, pname = pcall(function() return player:getName() end)
+    if not nOk or not pOk or type(cname) ~= "string" or type(pname) ~= "string" or cname ~= pname then return end
+    if newPos.z <= oldPos.z then return end
+    if targetName == "" or not E.armed() then return end
+    if knightSeePlayerByNameAnywhere(targetName) then return end
+    E.tryExaniTera()
+    E.useSurrounding()
+  end
+
+  function E.checkOffPlane(lpOk, lp, lz, ffx)
+    if lpOk and lp and lp.z ~= lz then
+      if not offPlaneSince then offPlaneSince = now end
+      if not E.armed() and (now - offPlaneSince) >= MISMATCH_ARM_MS then
+        E.arm()
+      end
+    elseif ffx and (not lpOk or not lp) then
+      if not offPlaneSince then offPlaneSince = now end
+      if not E.armed() and (now - offPlaneSince) >= MISMATCH_ARM_MS then
+        E.arm()
+      end
+    end
+  end
+
+  return E
+end
+
+--- Walk memory helper: evita re-path spam no mesmo destino.
+function knightCreateWalkMemory(walkGapMs, rewalkMs)
+  local lastX, lastY, lastZ = nil, nil, nil
+  local lastAt = 0
+  local M = {}
+  function M.clear()
+    lastX, lastY, lastZ = nil, nil, nil
+  end
+  function M.shouldWalk(tx, ty, tz)
+    if now - lastAt < walkGapMs then return false end
+    if lastX ~= tx or lastY ~= ty or lastZ ~= tz then return true end
+    return (now - lastAt) >= rewalkMs
+  end
+  function M.remember(tx, ty, tz)
+    lastX, lastY, lastZ = tx, ty, tz
+    lastAt = now
+  end
+  return M
 end
 
 knightEnsureStorage({
@@ -383,7 +508,7 @@ knightEnsureStorage({
   lastExivaDist = "",
   exivaManualName = "",
   lastExivaTime = 0,
-  lastSupportCastAt = 0,
+  _lastGlobalCastAt = 0,
 })
 
 
@@ -444,13 +569,8 @@ end)
 -- ========== 004_auto_exori_gauge.lua ==========
 
 --[[
-  004_auto_exori_gauge.lua — Exori Gauge (buff de dano em knight).
-
-  Regras: chat fechado, sem party buff activo, fila de suporte 002, cooldown local + global,
-  mana mínima e `canCast`. Tunáveis globais: KNIGHT_EXORI_GAUGE_SPELL, KNIGHT_EXORI_GAUGE_MIN_MANA.
-
+  004_auto_exori_gauge.lua — Exori Gauge (simplificado).
   Depende de: 002_storage_init.lua
-  PVE/PVP: idem (party buff também cobre buffs de grupo em hunts).
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -460,36 +580,21 @@ local lastCast = 0
 local GAP_MS = 2300
 local MIN_MANA = KNIGHT_EXORI_GAUGE_MIN_MANA or 400
 
-local function gaugeReady()
-  if knightChatOpen() then return false end
-  if hasPartyBuff and hasPartyBuff() then return false end
-  return knightSupportTimingAndSpellOk(SPELL, lastCast, GAP_MS, MIN_MANA)
-end
-
 knightExoriGaugeMacro = macro(200, "Exori Gauge", "Shift+0", function()
-  if knightSupportShouldDefer("exori_gauge") then return end
-  if not gaugeReady() then return end
-  say(SPELL)
-  lastCast = now
-  knightTouchSupportCast()
-end)
-
-knightSupportPriorityRegister("exori_gauge", function()
-  if not knightSupportMacroEnabled(knightExoriGaugeMacro) then return false end
-  return gaugeReady()
+  if hasPartyBuff and hasPartyBuff() then return end
+  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not knightGlobalCastReady(600) then return end
+  knightSpellSay(SPELL)
+  lastCast = knightNow()
+  knightTouchGlobalCast()
 end)
 
 
 -- ========== 005_auto_utamo_tempo.lua ==========
 
 --[[
-  004_auto_utamo_tempo.lua — Utamo Tempo (mana shield).
-
-  Exige haste activo (`hasHaste`); não recasta se já houver mana shield ou party buff. Partilha
-  slot e intervalo global com os restantes macros de suporte (002).
-
+  005_auto_utamo_tempo.lua — Utamo tempo (simplificado).
   Depende de: 002_storage_init.lua
-  PVE/PVP: útil em ambos; em PVP verificar se o servidor permite stack com outros efeitos.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -499,36 +604,22 @@ local lastCast = 0
 local GAP_MS = 2300
 local MIN_MANA = 200
 
-local function utamoReady()
-  if knightChatOpen() then return false end
-  if hasHaste and not hasHaste() then return false end
-  if (hasManaShield and hasManaShield()) or (hasPartyBuff and hasPartyBuff()) then return false end
-  return knightSupportTimingAndSpellOk(SPELL, lastCast, GAP_MS, MIN_MANA)
-end
-
 knightUtamoTempoMacro = macro(200, "Utamo Tempo", "Shift+1", function()
-  if knightSupportShouldDefer("utamo_tempo") then return end
-  if not utamoReady() then return end
-  say(SPELL)
-  lastCast = now
-  knightTouchSupportCast()
-end)
-
-knightSupportPriorityRegister("utamo_tempo", function()
-  if not knightSupportMacroEnabled(knightUtamoTempoMacro) then return false end
-  return utamoReady()
+  if hasHaste and not hasHaste() then return end
+  if (hasManaShield and hasManaShield()) or (hasPartyBuff and hasPartyBuff()) then return end
+  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not knightGlobalCastReady(600) then return end
+  knightSpellSay(SPELL)
+  lastCast = knightNow()
+  knightTouchGlobalCast()
 end)
 
 
 -- ========== 006_auto_haste.lua ==========
 
 --[[
-  005_auto_haste.lua — Utani Tempo Hur quando falta condição Haste.
-
-  Usa `hasHaste` (PlayerStates.Haste via game_bot). Partilha prioridade global com 002.
-
+  006_auto_haste.lua — Utani tempo hur (simplificado).
   Depende de: 002_storage_init.lua
-  PVE/PVP: essencial em movimento; respeita chat fechado para não falar no input.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -538,77 +629,48 @@ local lastCast = 0
 local GAP_MS = 3200
 local MIN_MANA = 100
 
-local function hasteReady()
-  if knightChatOpen() then return false end
-  if hasHaste and hasHaste() then return false end
-  return knightSupportTimingAndSpellOk(SPELL, lastCast, GAP_MS, MIN_MANA)
-end
-
 knightHasteMacro = macro(400, "Auto Haste", "Shift+2", function()
-  if knightSupportShouldDefer("haste") then return end
-  if not hasteReady() then return end
-  say(SPELL)
-  lastCast = now
-  knightTouchSupportCast()
-end)
-
-knightSupportPriorityRegister("haste", function()
-  if not knightSupportMacroEnabled(knightHasteMacro) then return false end
-  return hasteReady()
+  if hasHaste and hasHaste() then return end
+  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not knightGlobalCastReady(600) then return end
+  knightSpellSay(SPELL)
+  lastCast = knightNow()
+  knightTouchGlobalCast()
 end)
 
 
 -- ========== 007_exeta_res.lua ==========
 
 --[[
-  006_exeta_res.lua — Exeta Res em contacto (Chebyshev ≤ 1) com o alvo atacado.
-
-  Exige percentagem de mana mínima (evita exeta “seco”). Cooldown local + fila 002.
-
-  Depende de: 002_storage_init.lua (`knightAttackingPosition`, `manapercent`).
-  PVE/PVP: válido contra qualquer criatura atacada que esteja adjacente.
+  007_exeta_res.lua — Exeta res melee (simplificado).
+  Depende de: 002_storage_init.lua
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
 
 local SPELL = "exeta res"
 local lastCast = 0
-local GAP_MS = 5500
-local MIN_MANA = 100
-local MIN_MANA_PCT = 30
-
-local function exetaReady()
-  if knightChatOpen() then return false end
-  local tp = knightAttackingPosition()
-  local mp = pos and pos() or nil
-  if not tp or not mp or getDistanceBetween(mp, tp) > 1 then return false end
-  if manapercent and manapercent() <= MIN_MANA_PCT then return false end
-  return knightSupportTimingAndSpellOk(SPELL, lastCast, GAP_MS, MIN_MANA)
-end
+local GAP_MS = 6000
+local MIN_MANA = 350
 
 knightExetaResMacro = macro(180, "Exeta Res", "Shift+6", function()
-  if knightSupportShouldDefer("exeta_res") then return end
-  if not exetaReady() then return end
-  say(SPELL)
-  lastCast = now
-  knightTouchSupportCast()
-end)
-
-knightSupportPriorityRegister("exeta_res", function()
-  if not knightSupportMacroEnabled(knightExetaResMacro) then return false end
-  return exetaReady()
+  local t = knightAttackingCreature()
+  if not t then return end
+  local tp, mp = knightTargetPosPair(t)
+  if not tp or not mp or tp.z ~= mp.z then return end
+  if getDistanceBetween(mp, tp) > 1 then return end
+  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not knightGlobalCastReady(600) then return end
+  knightSpellSay(SPELL)
+  lastCast = knightNow()
+  knightTouchGlobalCast()
 end)
 
 
 -- ========== 008_anti_paralyze.lua ==========
 
 --[[
-  008_anti_paralyze.lua — Utani Tempo Hur para remover paralisia (prioridade máxima na fila 002).
-
-  Propósito PVP/PVE: reagir de imediato — não bloqueia por chat nem pelo gap global *antes* do
-  cast (só cooldown local + mana + `canCast`). Após `say`, `knightTouchSupportCast()` evita
-  colidir com outros suportes no mesmo tick.
-
+  008_anti_paralyze.lua — Anti paralyse (simplificado).
   Depende de: 002_storage_init.lua
 ]]
 
@@ -619,211 +681,50 @@ local lastCast = 0
 local GAP_MS = 1700
 local MIN_MANA = 60
 
-local function antiParalyzeReady()
-  if not isParalyzed or not isParalyzed() then return false end
-  if not mana or mana() < MIN_MANA then return false end
-  if (now - lastCast) < GAP_MS then return false end
-  if canCast and not canCast(SPELL) then return false end
-  return true
-end
-
 knightAntiParalyzeMacro = macro(100, "Anti Paralyze", "Shift+3", function()
-  if knightSupportShouldDefer("anti_paralyze") then return end
-  if not antiParalyzeReady() then return end
-  say(SPELL)
-  lastCast = now
-  knightTouchSupportCast()
-end)
-
-knightSupportPriorityRegister("anti_paralyze", function()
-  if not knightSupportMacroEnabled(knightAntiParalyzeMacro) then return false end
-  return antiParalyzeReady()
+  if not isParalyzed or not isParalyzed() then return end
+  if not mana or mana() < MIN_MANA then return end
+  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not knightGlobalCastReady(600) then return end
+  knightSpellSay(SPELL)
+  lastCast = knightNow()
+  knightTouchGlobalCast()
 end)
 
 
 -- ========== 010_combo_knight.lua ==========
 
 --[[
-  009_combo_knight.lua — Mas Exori Hur com alinhamento ao alvo em ataque (mesmo Z).
-
-  Se estiveres na diagonal “cruz” a um sqm, tenta passo lateral com `autoWalk` para ganhar
-  linha reta; caso contrário `turn` + pequeno atraso antes do cast. Regista prioridade
-  `mas_exori_hur` em 002 (storage_init).
-
-  Depende de: 002_storage_init.lua, g_map para tiles livres.
-  PVE/PVP: mesmo algoritmo; evita cast quando ainda há passo lateral pendente.
+  010_combo_knight.lua — Mas exori hur melee (simplificado: sem passo lateral nem fila global).
+  Depende de: 002_storage_init.lua
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
 
 local SPELL = "mas exori hur"
-local MIN_MANA = 1400
-local GAP_MS = 2200
-local TURN_DELAY_MS = 80
-local SIDE_STEP_GAP_MS = 280
-
 local lastCast = 0
-local lastSideStep = 0
---- Após `turn(want)`: espera até `now >= pendingUntil` com o mesmo `pendingId` de criatura.
-local pendingUntil, pendingId = 0, 0
+local GAP_MS = 2200
+local MIN_MANA = 1400
 
-local function dirToTarget(dx, dy)
-  if dx == 0 and dy == 0 then return nil end
-  if dx == 0 then return dy > 0 and 2 or 0 end
-  if dy == 0 then return dx > 0 and 1 or 3 end
-  if math.abs(dx) >= math.abs(dy) then return dx > 0 and 1 or 3 end
-  return dy > 0 and 2 or 0
-end
-
-local function turnSteps(cur, want)
-  if cur == nil or want == nil then return 99 end
-  local d = math.abs(want - cur)
-  return math.min(d, 4 - d)
-end
-
---- Casa lateral livre para passo em “L” (diagonal ao alvo).
-local function tileOkForSideStep(p)
-  if not g_map or not g_map.getTile then return false end
-  local pid = player and knightSafeCreatureId(player) or 0
-  local ok, walk = pcall(function()
-    local tile = g_map.getTile(p)
-    if not tile or not tile:isWalkable() then return false end
-    for _, c in ipairs(tile:getCreatures() or {}) do
-      if knightSafeCreatureId(c) ~= pid then return false end
-    end
-    return true
-  end)
-  return ok and walk == true
-end
-
-local function pickSideStep(mp, tp)
-  local dx, dy = tp.x - mp.x, tp.y - mp.y
-  if math.abs(dx) ~= 1 or math.abs(dy) ~= 1 then return nil end
-  local a = { x = tp.x, y = mp.y, z = mp.z }
-  local b = { x = mp.x, y = tp.y, z = mp.z }
-  local okA, okB = tileOkForSideStep(a), tileOkForSideStep(b)
-  if not okA and not okB then return nil end
-  if okA and not okB then return a end
-  if okB and not okA then return b end
-  local cur
-  pcall(function() cur = player:getDirection() end)
-  local dirA = dirToTarget(tp.x - a.x, tp.y - a.y)
-  local dirB = dirToTarget(tp.x - b.x, tp.y - b.y)
-  local sa, sb = turnSteps(cur, dirA), turnSteps(cur, dirB)
-  if sa < sb then return a end
-  if sb < sa then return b end
-  return a
-end
-
---- Condicões de cast direito (sem estado pendente de turn).
-local function hurAlignedAndReady(t, tp, mp)
-  if not t or not tp or not mp or tp.z ~= mp.z then return false end
-  if not mana or mana() < MIN_MANA then return false end
-  if not knightSupportTimingAndSpellOk(SPELL, lastCast, GAP_MS, MIN_MANA) then return false end
-  if pickSideStep(mp, tp) then return false end
-  local want = dirToTarget(tp.x - mp.x, tp.y - mp.y)
-  if want ~= nil and turn then
-    local cur
-    pcall(function() cur = player:getDirection() end)
-    if cur == nil or cur ~= want then return false end
-  end
-  return true
-end
-
-local function hurClaimsSupportSlot()
-  local t = knightAttackingCreature()
-  if not t then return false end
-  local tp, mp = knightTargetPosPair(t)
-
-  if pendingUntil > 0 then
-    if now < pendingUntil then return false end
-    if knightSafeCreatureId(t) ~= pendingId then return false end
-    if canCast and not canCast(SPELL) then return false end
-    return true
-  end
-
-  return hurAlignedAndReady(t, tp, mp)
-end
-
-local function clearTurnPending()
-  pendingUntil, pendingId = 0, 0
-end
-
-onAttackingCreatureChange(function()
-  clearTurnPending()
-end)
-
-knightMasExoriHurMacro = macro(180, "Mas Exori Hur", "Shift+5", function()
-  if knightChatOpen() then return end
-  if knightSupportShouldDefer("mas_exori_hur") then return end
-
+knightMasExoriHurMacro = macro(200, "Mas Exori Hur", "Shift+5", function()
   local t = knightAttackingCreature()
   if not t then return end
   local tp, mp = knightTargetPosPair(t)
   if not tp or not mp or tp.z ~= mp.z then return end
-  if not mana or mana() < MIN_MANA then return end
-
-  if pendingUntil > 0 then
-    if now < pendingUntil then return end
-    if knightSafeCreatureId(t) ~= pendingId then clearTurnPending() return end
-    if canCast and not canCast(SPELL) then clearTurnPending() return end
-    say(SPELL)
-    lastCast = now
-    knightTouchSupportCast()
-    clearTurnPending()
-    return
-  end
-
-  if knightMsSinceSupportCast() < knightSupportGap() then return end
-  if (now - lastCast) < GAP_MS then return end
-
-  local side = pickSideStep(mp, tp)
-  if side then
-    if knightIsWalking and knightIsWalking() then return end
-    if (now - lastSideStep) < SIDE_STEP_GAP_MS then return end
-    if autoWalk then
-      autoWalk(side, 20, { ignoreNonPathable = true, precision = 1 })
-      lastSideStep = now
-    end
-    return
-  end
-
-  local want = dirToTarget(tp.x - mp.x, tp.y - mp.y)
-  if want ~= nil and turn then
-    local cur
-    pcall(function() cur = player:getDirection() end)
-    if cur == nil or cur ~= want then
-      pcall(function() turn(want) end)
-      local tid = knightSafeCreatureId(t)
-      if tid ~= 0 then
-        pendingUntil = now + TURN_DELAY_MS
-        pendingId = tid
-      end
-      return
-    end
-  end
-
-  if canCast and not canCast(SPELL) then return end
-  say(SPELL)
-  lastCast = now
-  knightTouchSupportCast()
-end)
-
-knightSupportPriorityRegister("mas_exori_hur", function()
-  if not knightSupportMacroEnabled(knightMasExoriHurMacro) then return false end
-  if knightChatOpen() then return false end
-  return hurClaimsSupportSlot()
+  if getDistanceBetween(mp, tp) > 1 then return end
+  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not knightGlobalCastReady(600) then return end
+  knightSpellSay(SPELL)
+  lastCast = knightNow()
+  knightTouchGlobalCast()
 end)
 
 
 -- ========== 011_auto_exori_strike.lua ==========
 
 --[[
-  010_auto_exori_strike.lua — Exori Strike com alvo adjacente (≤ 1 sqm, mesmo Z).
-
-  Depende de: 002_storage_init.lua (`knightAttackingCreature`, `knightTargetPosPair`,
-  fila de suporte).
-  PVE/PVP: só dispara com criatura atacada válida e dentro de melee.
+  011_auto_exori_strike.lua — Exori strike melee (simplificado).
+  Depende de: 002_storage_init.lua
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -833,27 +734,17 @@ local lastCast = 0
 local GAP_MS = 2000
 local MIN_MANA = 800
 
-local function strikeReady()
-  if knightChatOpen() then return false end
-  local t = knightAttackingCreature()
-  if not t then return false end
-  local tp, mp = knightTargetPosPair(t)
-  if not tp or not mp or tp.z ~= mp.z then return false end
-  if getDistanceBetween(mp, tp) > 1 then return false end
-  return knightSupportTimingAndSpellOk(SPELL, lastCast, GAP_MS, MIN_MANA)
-end
-
 knightExoriStrikeMacro = macro(180, "Auto Exori Strike", "Shift+7", function()
-  if knightSupportShouldDefer("exori_strike") then return end
-  if not strikeReady() then return end
-  say(SPELL)
-  lastCast = now
-  knightTouchSupportCast()
-end)
-
-knightSupportPriorityRegister("exori_strike", function()
-  if not knightSupportMacroEnabled(knightExoriStrikeMacro) then return false end
-  return strikeReady()
+  local t = knightAttackingCreature()
+  if not t then return end
+  local tp, mp = knightTargetPosPair(t)
+  if not tp or not mp or tp.z ~= mp.z then return end
+  if getDistanceBetween(mp, tp) > 1 then return end
+  if not knightSpellReady(lastCast, GAP_MS, MIN_MANA) then return end
+  if not knightGlobalCastReady(600) then return end
+  knightSpellSay(SPELL)
+  lastCast = knightNow()
+  knightTouchGlobalCast()
 end)
 
 
@@ -863,10 +754,10 @@ end)
   012_auto_target.lua — Lock de alvo PVP + Auto Chase.
 
   - Auto Target (Shift+Q): mantém `g_game.attack` no jogador lockado no mesmo piso.
-  - Auto Chase (2): força chase mode 1 e replica a lógica vertical de 013_follow (passos, escadas,
-    `knightMapUseTopThing`, janela `_chaseVerticalUntil`, exani tera). Estado em `storage._chase*`.
+  - Auto Chase (2): força chase mode 1 e perseguição vertical via motor partilhado
+    (`knightCreateVerticalEngine` de 002).
 
-  Não ligar em simultâneo com 013 Follow PVP (_chase* vs _follow*).
+  Exclusão mútua automática com 013 Follow PVP.
   Depende de: 002_storage_init.lua, 003 recomendado (lastAttacked).
 ]]
 
@@ -885,25 +776,15 @@ if knightEnsureStorage then
   })
 end
 
--- Mesmos valores que 013_follow.lua (manter alinhados ao mudar um dos ficheiros).
 local CHASE_POLL_MS = 85
-local CHASE_WALK_GAP_MS = 145
 local SAME_FLOOR_COMFORT_DIST = 2
-local SAME_DEST_REWALK_MS = 320
-local LADDER_USE_GAP_MS = 280
-local LADDER_SCAN_RADIUS = 2
-local LADDER_ACTION_DIST = 4
-local EXANI_GAP_MS = 900
-local VANISH_WALK_DELAY_MS = 90
-local VANISH_SURROUND_DELAY_MS = 750
-local FLOOR_CHASE_STEPS = 4
-local FLOOR_CHASE_STEP_MS = 115
-local LADDER_FOOT_RETRY_MS = { 60, 160 }
-local CHASE_VERTICAL_WINDOW_MS = 4800
-local VERTICAL_MISMATCH_ARM_MS = 550
-
 local REATTACK_GAP_MS = 120
 local CHASE_ATTACK_GAP_MS = 50
+local LADDER_USE_GAP_MS = 280
+local LADDER_ACTION_DIST = 4
+
+local chaseEngine = knightCreateVerticalEngine("_chase")
+local chaseWalkMem = knightCreateWalkMemory(145, 320)
 
 local throttleAt = {}
 local function throttle(key, ms)
@@ -912,161 +793,8 @@ local function throttle(key, ms)
   return true
 end
 
-local lastExaniChaseAt = 0
-local lastChaseWalkAt = 0
 local lastChaseLadderUseAt = 0
-local chaseLadderAdjIndex = 0
 local chaseWasOn = false
-local chaseOffPlaneSince = nil
-local lastChaseWalkDestX, lastChaseWalkDestY, lastChaseWalkDestZ = nil, nil, nil
-
-local function clearChaseWalkDest()
-  lastChaseWalkDestX, lastChaseWalkDestY, lastChaseWalkDestZ = nil, nil, nil
-end
-
-local function shouldIssueChaseWalk(tx, ty, tz)
-  if lastChaseWalkDestX ~= tx or lastChaseWalkDestY ~= ty or lastChaseWalkDestZ ~= tz then
-    return true
-  end
-  return (now - lastChaseWalkAt) >= SAME_DEST_REWALK_MS
-end
-
-local function rememberChaseWalk(tx, ty, tz)
-  lastChaseWalkDestX, lastChaseWalkDestY, lastChaseWalkDestZ = tx, ty, tz
-end
-
-local function verticalChaseArmed()
-  local u = storage._chaseVerticalUntil
-  return type(u) == "number" and u > now
-end
-
-local function armVerticalChase()
-  storage._chaseVerticalUntil = now + CHASE_VERTICAL_WINDOW_MS
-  clearChaseWalkDest()
-end
-
-local function clearVerticalChase()
-  storage._chaseVerticalUntil = 0
-  chaseOffPlaneSince = nil
-  storage._chaseLadderFx = nil
-  storage._chaseLadderFy = nil
-  storage._chaseLadderFz = nil
-  chaseLadderAdjIndex = 0
-end
-
-local function setChaseLadderFootFromOldPos(oldPos)
-  if not oldPos then return end
-  storage._chaseLadderFx = oldPos.x
-  storage._chaseLadderFy = oldPos.y
-  storage._chaseLadderFz = oldPos.z
-  chaseLadderAdjIndex = 0
-end
-
-local function chaseLadderFootXYOnPlane(lz)
-  local fx, fy = storage._chaseLadderFx, storage._chaseLadderFy
-  local fz = storage._chaseLadderFz
-  if type(fx) ~= "number" or type(fy) ~= "number" or type(fz) ~= "number" then return nil, nil end
-  if fz ~= lz then return nil, nil end
-  return fx, fy
-end
-
-local function useSurroundingChase()
-  for i = -1, 1 do
-    for j = -1, 1 do
-      knightMapUseTopThing(posx() + i, posy() + j, posz())
-    end
-  end
-end
-
-local function tryChaseLadderUsesAtFoot(wx, wy, lz)
-  local mp = pos and pos() or nil
-  if not mp or mp.z ~= lz then return end
-  local cands = {}
-  for dx = -LADDER_SCAN_RADIUS, LADDER_SCAN_RADIUS do
-    for dy = -LADDER_SCAN_RADIUS, LADDER_SCAN_RADIUS do
-      local x, y = wx + dx, wy + dy
-      local t = { x = x, y = y, z = lz }
-      if getDistanceBetween(mp, t) <= 1 then
-        local df = getDistanceBetween({ x = wx, y = wy, z = lz }, t)
-        cands[#cands + 1] = { x = x, y = y, df = df }
-      end
-    end
-  end
-  table.sort(cands, function(a, b) return a.df < b.df end)
-  if #cands == 0 then return end
-  chaseLadderAdjIndex = (chaseLadderAdjIndex % #cands) + 1
-  local c = cands[chaseLadderAdjIndex]
-  knightMapUseTopThing(c.x, c.y, lz)
-end
-
-local function tryExaniChaseTera()
-  if now - lastExaniChaseAt < EXANI_GAP_MS then return end
-  lastExaniChaseAt = now
-  if say then pcall(function() say("exani tera") end) end
-end
-
---- Alvo lock: mesma ideia que `onCreaturePositionChange` do 013_follow (sem ramo same-Z).
-local function onChaseTargetMoved(creature, newPos, oldPos)
-  if not creature or not oldPos then return end
-  local nOk, cname = pcall(function() return creature:getName() end)
-  if not nOk or type(cname) ~= "string" then return end
-  local tname = knightTrim(storage._target or "")
-  if tname == "" or not knightNameMatchLock(tname, cname) then return end
-
-  if not newPos then
-    armVerticalChase()
-    setChaseLadderFootFromOldPos(oldPos)
-    schedule(VANISH_WALK_DELAY_MS, function()
-      if autoWalk then pcall(function() autoWalk(oldPos) end) end
-    end)
-    schedule(VANISH_SURROUND_DELAY_MS, function()
-      if verticalChaseArmed() then useSurroundingChase() end
-    end)
-  elseif oldPos.z ~= newPos.z then
-    armVerticalChase()
-    setChaseLadderFootFromOldPos(oldPos)
-    local targetWentUp = newPos.z < oldPos.z
-    if autoWalk then pcall(function() autoWalk(oldPos) end) end
-    if targetWentUp then
-      knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z)
-      for _, d in ipairs(LADDER_FOOT_RETRY_MS) do
-        schedule(d, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
-      end
-      schedule(LADDER_FOOT_RETRY_MS[#LADDER_FOOT_RETRY_MS] + 80, function()
-        tryChaseLadderUsesAtFoot(oldPos.x, oldPos.y, oldPos.z)
-      end)
-      knightMapUseTopThing(newPos.x, newPos.y - 1, newPos.z)
-    else
-      schedule(40, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
-      schedule(130, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
-      schedule(220, function() tryChaseLadderUsesAtFoot(oldPos.x, oldPos.y, oldPos.z) end)
-    end
-    for i = 1, FLOOR_CHASE_STEPS do
-      schedule(i * FLOOR_CHASE_STEP_MS, function()
-        if not verticalChaseArmed() then return end
-        if autoWalk and getDistanceBetween(pos(), oldPos) > 1 then
-          pcall(function() autoWalk(oldPos) end)
-        end
-        if getDistanceBetween(pos(), oldPos) == 0 and posz() > newPos.z and not knightSeePlayerByNameAnywhere(tname) then
-          tryExaniChaseTera()
-        end
-      end)
-    end
-  end
-end
-
-local function onLocalPlayerAscendChase(creature, newPos, oldPos)
-  if not newPos or not oldPos or not creature then return end
-  local nOk, cname = pcall(function() return creature:getName() end)
-  local pOk, pname = pcall(function() return player:getName() end)
-  if not nOk or not pOk or type(cname) ~= "string" or type(pname) ~= "string" or cname ~= pname then return end
-  if newPos.z <= oldPos.z then return end
-  local tname = knightTrim(storage._target or "")
-  if tname == "" or not verticalChaseArmed() then return end
-  if knightSeePlayerByNameAnywhere(tname) then return end
-  tryExaniChaseTera()
-  useSurroundingChase()
-end
 
 local autoTargetMacro
 local autoChaseMacro
@@ -1076,16 +804,17 @@ onAttackingCreatureChange(function(creature, oldCreature)
   local nOk, name = pcall(function() return creature:getName() end)
   if not nOk or type(name) ~= "string" or name == "" then return end
   name = knightTrim(name)
-  storage.lastAttacked = name
   if knightMacroIsOn(autoTargetMacro) or knightMacroIsOn(autoChaseMacro) then
     storage._target = name
+    storage.followLeader = ""
   end
 end)
 
 onCreaturePositionChange(function(creature, newPos, oldPos)
   if not autoChaseMacro or autoChaseMacro:isOff() then return end
-  onChaseTargetMoved(creature, newPos, oldPos)
-  onLocalPlayerAscendChase(creature, newPos, oldPos)
+  local tname = knightTrim(storage._target or "")
+  chaseEngine.onTargetMoved(creature, newPos, oldPos, tname)
+  chaseEngine.onLocalPlayerAscend(creature, newPos, oldPos, tname)
 end)
 
 autoTargetMacro = macro(100, "Auto Target", "Shift+Q", function()
@@ -1121,8 +850,8 @@ autoChaseMacro = macro(CHASE_POLL_MS, "Auto Chase", "2", function()
 
   local tname = knightTrim(storage._target or "")
   if tname == "" then
-    clearVerticalChase()
-    clearChaseWalkDest()
+    chaseEngine.clear()
+    chaseWalkMem.clear()
     return
   end
 
@@ -1163,61 +892,46 @@ autoChaseMacro = macro(CHASE_POLL_MS, "Auto Chase", "2", function()
     lp = b
   end
 
-  local ffx, ffy = chaseLadderFootXYOnPlane(lz)
+  local ffx, ffy = chaseEngine.ladderFootXY(lz)
 
   if lpOk and lp.z == lz then
-    clearVerticalChase()
-    chaseOffPlaneSince = nil
+    chaseEngine.clear()
     local sameDist = getDistanceBetween(mp, lp)
     if sameDist <= SAME_FLOOR_COMFORT_DIST then return end
-    if now - lastChaseWalkAt < CHASE_WALK_GAP_MS then return end
-    if not shouldIssueChaseWalk(lp.x, lp.y, lp.z) then return end
+    if not chaseWalkMem.shouldWalk(lp.x, lp.y, lp.z) then return end
     pcall(function()
       autoWalk(lp, 20, { ignoreNonPathable = true, precision = 2 })
     end)
-    lastChaseWalkAt = now
-    rememberChaseWalk(lp.x, lp.y, lp.z)
+    chaseWalkMem.remember(lp.x, lp.y, lp.z)
     return
   end
 
-  if lpOk and lp and lp.z ~= lz then
-    if not chaseOffPlaneSince then chaseOffPlaneSince = now end
-    if not verticalChaseArmed() and (now - chaseOffPlaneSince) >= VERTICAL_MISMATCH_ARM_MS then
-      armVerticalChase()
-    end
-  elseif ffx and (not lpOk or not lp) then
-    if not chaseOffPlaneSince then chaseOffPlaneSince = now end
-    if not verticalChaseArmed() and (now - chaseOffPlaneSince) >= VERTICAL_MISMATCH_ARM_MS then
-      armVerticalChase()
-    end
-  end
+  chaseEngine.checkOffPlane(lpOk, lp, lz, ffx)
 
   local function doChaseOtherPlaneWalkUse(wx, wy)
-    if not verticalChaseArmed() then return end
+    if not chaseEngine.armed() then return end
     local dest = { x = wx, y = wy, z = lz }
     local dist = getDistanceBetween(mp, dest)
     if dist <= LADDER_ACTION_DIST then
       if now - lastChaseLadderUseAt >= LADDER_USE_GAP_MS then
-        tryChaseLadderUsesAtFoot(wx, wy, lz)
+        chaseEngine.tryLadderUsesAtFoot(wx, wy, lz)
         lastChaseLadderUseAt = now
       end
       return
     end
-    if now - lastChaseWalkAt < CHASE_WALK_GAP_MS then return end
-    if not shouldIssueChaseWalk(wx, wy, lz) then return end
+    if not chaseWalkMem.shouldWalk(wx, wy, lz) then return end
     pcall(function()
       autoWalk(dest, 20, { ignoreNonPathable = true, precision = 2 })
     end)
-    lastChaseWalkAt = now
-    rememberChaseWalk(wx, wy, lz)
+    chaseWalkMem.remember(wx, wy, lz)
   end
 
-  if ffx and verticalChaseArmed() then
+  if ffx and chaseEngine.armed() then
     doChaseOtherPlaneWalkUse(ffx, ffy)
     return
   end
 
-  if lpOk and lp and lp.z ~= lz and verticalChaseArmed() then
+  if lpOk and lp and lp.z ~= lz and chaseEngine.armed() then
     doChaseOtherPlaneWalkUse(lp.x, lp.y)
   end
 end)
@@ -1226,8 +940,8 @@ local btnClear
 local function doClear()
   storage._target = ""
   storage._targetId = 0
-  clearVerticalChase()
-  clearChaseWalkDest()
+  chaseEngine.clear()
+  chaseWalkMem.clear()
   if g_game and g_game.cancelAttackAndFollow then
     pcall(function() g_game.cancelAttackAndFollow() end)
   end
@@ -1253,18 +967,17 @@ hotkey("Shift+E", doRecover)
 macro(150, function()
   local on = autoChaseMacro and autoChaseMacro:isOn()
   if on and not chaseWasOn then
-    clearVerticalChase()
-    clearChaseWalkDest()
+    chaseEngine.clear()
+    chaseWalkMem.clear()
   elseif not on and chaseWasOn then
-    clearVerticalChase()
-    clearChaseWalkDest()
+    chaseEngine.clear()
+    chaseWalkMem.clear()
   end
   chaseWasOn = on and true or false
   storage._targetEnabled = knightMacroIsOn(autoTargetMacro)
   storage._chaseEnabled = on
 end)
 
---- Referências para `001_pvp_manual_mode.lua` (ligar macros por código).
 knightAutoTargetMacro = autoTargetMacro
 knightAutoChaseMacro = autoChaseMacro
 
@@ -1275,11 +988,10 @@ knightAutoChaseMacro = autoChaseMacro
   013_follow.lua — Follow PVP (só caminha; não mantém attack no líder).
 
   Com a macro ligada, o próximo player atacado passa a ser `followLeader`. Perseguição por
-  `autoWalk`; mudança de Z só após `onCreaturePositionChange` do líder (pé guardado em
-  `storage._followLadder*`). Uses em sqm adjacentes ao follower via `knightMapUseTopThing` (002).
-  Não abre portas no mesmo plano por design.
+  `autoWalk`; mudança de Z via motor partilhado (`knightCreateVerticalEngine` de 002).
+  Uses em sqm adjacentes via `knightMapUseTopThing` (002).
 
-  Não usar com 012 Auto Chase activo (lógica duplicada: _follow* vs _chase*).
+  Exclusão mútua automática com 012 Auto Chase.
   Depende de: 002_storage_init.lua
 ]]
 storage = (type(storage) == "table" and storage) or {}
@@ -1295,88 +1007,17 @@ if knightEnsureStorage then
   })
 end
 
--- Poll: mesmo andar com “zona de conforto” evita re-path a cada tick (oscila à volta do líder).
 local FOLLOW_POLL_MS = 85
-local FOLLOW_WALK_GAP_MS = 145
 local SAME_FLOOR_COMFORT_DIST = 2
-local SAME_DEST_REWALK_MS = 320
-local LADDER_USE_GAP_MS = 280
---- Varre o pé ± este raio, mas só dá use em tiles a ≤1 do jogador (evita “cannot use this object” em SQM longe).
-local LADDER_SCAN_RADIUS = 2
---- Distância até ao pé para começar a tentar use (líder diagonal/lateral à escada).
-local LADDER_ACTION_DIST = 4
-local EXANI_GAP_MS = 900
 local INTERRUPTOR_MS = 500
-local VANISH_WALK_DELAY_MS = 90
-local VANISH_SURROUND_DELAY_MS = 750
-local FLOOR_CHASE_STEPS = 4
-local FLOOR_CHASE_STEP_MS = 115
-local LADDER_FOOT_RETRY_MS = { 60, 160 }
---- Após o líder mudar de andar: janela curta reduz use espúrio se o follower for mais rápido.
-local FOLLOW_VERTICAL_WINDOW_MS = 4800
---- Sem callback de troca de Z: exige discrepância de plano estável antes de armar.
-local VERTICAL_MISMATCH_ARM_MS = 550
+local LADDER_USE_GAP_MS = 280
+local LADDER_ACTION_DIST = 4
 
-local lastExaniTeraAt = 0
-local lastFollowWalkAt = 0
+local followEngine = knightCreateVerticalEngine("_follow")
+local followWalkMem = knightCreateWalkMemory(145, 320)
+
 local lastLadderUseAt = 0
-local ladderAdjIndex = 0
 local followWasOn = false
-local offPlaneSince = nil
-local lastWalkDestX, lastWalkDestY, lastWalkDestZ = nil, nil, nil
-
-local function clearWalkDestMemory()
-  lastWalkDestX, lastWalkDestY, lastWalkDestZ = nil, nil, nil
-end
-
---- Novo destino ou passou tempo → vale mandar outro autoWalk (evita spam no mesmo tile).
-local function shouldIssueWalk(tx, ty, tz)
-  if lastWalkDestX ~= tx or lastWalkDestY ~= ty or lastWalkDestZ ~= tz then
-    return true
-  end
-  return (now - lastFollowWalkAt) >= SAME_DEST_REWALK_MS
-end
-
-local function rememberWalkDest(tx, ty, tz)
-  lastWalkDestX, lastWalkDestY, lastWalkDestZ = tx, ty, tz
-end
-
-local function verticalFollowArmed()
-  local u = storage._followVerticalUntil
-  return type(u) == "number" and u > now
-end
-
-local function armVerticalFollow()
-  storage._followVerticalUntil = now + FOLLOW_VERTICAL_WINDOW_MS
-  clearWalkDestMemory()
-end
-
-local function clearVerticalFollow()
-  storage._followVerticalUntil = 0
-  offPlaneSince = nil
-  storage._followLadderFx = nil
-  storage._followLadderFy = nil
-  storage._followLadderFz = nil
-  ladderAdjIndex = 0
-end
-
---- Pé real da transição (tile onde o líder estava antes de mudar de Z), não a coluna do lp em cima.
-local function setLadderFootFromOldPos(oldPos)
-  if not oldPos then return end
-  storage._followLadderFx = oldPos.x
-  storage._followLadderFy = oldPos.y
-  storage._followLadderFz = oldPos.z
-  ladderAdjIndex = 0
-end
-
-local function ladderFootXYOnPlane(lz)
-  local fx = storage._followLadderFx
-  local fy = storage._followLadderFy
-  local fz = storage._followLadderFz
-  if type(fx) ~= "number" or type(fy) ~= "number" or type(fz) ~= "number" then return nil, nil end
-  if fz ~= lz then return nil, nil end
-  return fx, fy
-end
 
 local function safeCancelAttack()
   if g_game and g_game.cancelAttack then
@@ -1384,7 +1025,6 @@ local function safeCancelAttack()
   end
 end
 
---- Com follow activo, não deixar o cliente em modo atacar o líder (só caminhar até ele).
 local function cancelAttackIfTargetingLeader(lname)
   if not lname or lname == "" then return end
   if not g_game or not g_game.isAttacking or not g_game.getAttackingCreature then return end
@@ -1400,48 +1040,6 @@ local function cancelAttackIfTargetingLeader(lname)
   end
 end
 
-local function useSurroundingTiles()
-  for i = -1, 1 do
-    for j = -1, 1 do
-      knightMapUseTopThing(posx() + i, posy() + j, posz())
-    end
-  end
-end
-
---- Tenta subir/descer: candidatos num quadrado em torno do pé, filtrados a adjacência ao local player.
-local function tryLadderUsesAtFoot(wx, wy, lz)
-  local mp = pos and pos() or nil
-  if not mp or mp.z ~= lz then return end
-  local cands = {}
-  for dx = -LADDER_SCAN_RADIUS, LADDER_SCAN_RADIUS do
-    for dy = -LADDER_SCAN_RADIUS, LADDER_SCAN_RADIUS do
-      local x, y = wx + dx, wy + dy
-      local t = { x = x, y = y, z = lz }
-      if getDistanceBetween(mp, t) <= 1 then
-        local df = getDistanceBetween({ x = wx, y = wy, z = lz }, t)
-        cands[#cands + 1] = { x = x, y = y, df = df }
-      end
-    end
-  end
-  table.sort(cands, function(a, b) return a.df < b.df end)
-  if #cands == 0 then return end
-  ladderAdjIndex = (ladderAdjIndex % #cands) + 1
-  local c = cands[ladderAdjIndex]
-  knightMapUseTopThing(c.x, c.y, lz)
-end
-
-local function tryExaniTera()
-  if now - lastExaniTeraAt < EXANI_GAP_MS then return end
-  lastExaniTeraAt = now
-  if say then pcall(function() say("exani tera") end) end
-end
-
-local function seeLeaderAnywhere(lockName)
-  if knightSeePlayerByNameAnywhere then return knightSeePlayerByNameAnywhere(lockName) end
-  return nil
-end
-
--- Macro leve: só interruptor (isOn); intervalo mínimo evita callback vazio a cada 50 ms.
 local followMacro = macro(INTERRUPTOR_MS, "Follow PVP", "3", function() end)
 
 onAttackingCreatureChange(function(creature)
@@ -1452,8 +1050,8 @@ onAttackingCreatureChange(function(creature)
   if not nOk or type(name) ~= "string" then return end
   name = knightTrim(name)
   if name == "" then return end
-  storage.lastAttacked = name
   storage.followLeader = name
+  storage._target = ""
   safeCancelAttack()
 end)
 
@@ -1485,135 +1083,64 @@ macro(FOLLOW_POLL_MS, function()
     lp = b
   end
 
-  local ffx, ffy = ladderFootXYOnPlane(lz)
+  local ffx, ffy = followEngine.ladderFootXY(lz)
 
-  -- Mesmo plano que o líder ainda visível: follow normal.
   if lpOk and lp.z == lz then
-    clearVerticalFollow()
-    offPlaneSince = nil
+    followEngine.clear()
     local sameDist = getDistanceBetween(mp, lp)
     if sameDist <= SAME_FLOOR_COMFORT_DIST then return end
-    if now - lastFollowWalkAt < FOLLOW_WALK_GAP_MS then return end
-    if not shouldIssueWalk(lp.x, lp.y, lp.z) then return end
+    if not followWalkMem.shouldWalk(lp.x, lp.y, lp.z) then return end
     pcall(function()
       autoWalk(lp, 20, { ignoreNonPathable = true, precision = 2 })
     end)
-    lastFollowWalkAt = now
-    rememberWalkDest(lp.x, lp.y, lp.z)
+    followWalkMem.remember(lp.x, lp.y, lp.z)
     return
   end
 
-  -- Líder noutro Z visível, ou sumiu do stack (subiu e o cliente já não o lista neste andar).
-  if lpOk and lp and lp.z ~= lz then
-    if not offPlaneSince then offPlaneSince = now end
-    if not verticalFollowArmed() and (now - offPlaneSince) >= VERTICAL_MISMATCH_ARM_MS then
-      armVerticalFollow()
-    end
-  elseif ffx and (not lpOk or not lp) then
-    if not offPlaneSince then offPlaneSince = now end
-    if not verticalFollowArmed() and (now - offPlaneSince) >= VERTICAL_MISMATCH_ARM_MS then
-      armVerticalFollow()
-    end
-  end
+  followEngine.checkOffPlane(lpOk, lp, lz, ffx)
 
   local function doOtherPlaneWalkUse(wx, wy)
-    if not verticalFollowArmed() then return end
+    if not followEngine.armed() then return end
     local target = { x = wx, y = wy, z = lz }
     local dist = getDistanceBetween(mp, target)
     if dist <= LADDER_ACTION_DIST then
       if now - lastLadderUseAt >= LADDER_USE_GAP_MS then
-        tryLadderUsesAtFoot(wx, wy, lz)
+        followEngine.tryLadderUsesAtFoot(wx, wy, lz)
         lastLadderUseAt = now
       end
       return
     end
-    if now - lastFollowWalkAt < FOLLOW_WALK_GAP_MS then return end
-    if not shouldIssueWalk(wx, wy, lz) then return end
+    if not followWalkMem.shouldWalk(wx, wy, lz) then return end
     pcall(function()
       autoWalk(target, 20, { ignoreNonPathable = true, precision = 2 })
     end)
-    lastFollowWalkAt = now
-    rememberWalkDest(wx, wy, lz)
+    followWalkMem.remember(wx, wy, lz)
   end
 
-  if ffx and verticalFollowArmed() then
+  if ffx and followEngine.armed() then
     doOtherPlaneWalkUse(ffx, ffy)
     return
   end
 
-  if lpOk and lp and lp.z ~= lz and verticalFollowArmed() then
+  if lpOk and lp and lp.z ~= lz and followEngine.armed() then
     doOtherPlaneWalkUse(lp.x, lp.y)
   end
 end)
 
 onCreaturePositionChange(function(creature, newPos, oldPos)
   if not followMacro or followMacro:isOff() then return end
-  if not creature or not oldPos then return end
-  local nOk, cname = pcall(function() return creature:getName() end)
-  if not nOk or type(cname) ~= "string" then return end
-
   local lname = knightTrim(storage.followLeader or "")
   if lname == "" then return end
-
-  if knightNameMatchLock(lname, cname) then
-    if not newPos then
-      armVerticalFollow()
-      setLadderFootFromOldPos(oldPos)
-      schedule(VANISH_WALK_DELAY_MS, function()
-        if autoWalk then pcall(function() autoWalk(oldPos) end) end
-      end)
-      schedule(VANISH_SURROUND_DELAY_MS, function()
-        if verticalFollowArmed() then useSurroundingTiles() end
-      end)
-    elseif oldPos.z ~= newPos.z then
-      armVerticalFollow()
-      setLadderFootFromOldPos(oldPos)
-      local leaderWentUp = newPos.z < oldPos.z
-      if autoWalk then pcall(function() autoWalk(oldPos) end) end
-      if leaderWentUp then
-        knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z)
-        for _, d in ipairs(LADDER_FOOT_RETRY_MS) do
-          schedule(d, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
-        end
-        schedule(LADDER_FOOT_RETRY_MS[#LADDER_FOOT_RETRY_MS] + 80, function()
-          tryLadderUsesAtFoot(oldPos.x, oldPos.y, oldPos.z)
-        end)
-        knightMapUseTopThing(newPos.x, newPos.y - 1, newPos.z)
-      else
-        schedule(40, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
-        schedule(130, function() knightMapUseTopThing(oldPos.x, oldPos.y, oldPos.z) end)
-        schedule(220, function() tryLadderUsesAtFoot(oldPos.x, oldPos.y, oldPos.z) end)
-      end
-      for i = 1, FLOOR_CHASE_STEPS do
-        schedule(i * FLOOR_CHASE_STEP_MS, function()
-          if not verticalFollowArmed() then return end
-          if autoWalk and getDistanceBetween(pos(), oldPos) > 1 then
-            pcall(function() autoWalk(oldPos) end)
-          end
-          if getDistanceBetween(pos(), oldPos) == 0 and posz() > newPos.z and not seeLeaderAnywhere(lname) then
-            tryExaniTera()
-          end
-        end)
-      end
-    end
-  end
-
-  if not newPos or not player then return end
-  local pOk, pname = pcall(function() return player:getName() end)
-  if not pOk or type(pname) ~= "string" or cname ~= pname then return end
-  if newPos.z <= oldPos.z then return end
-  if lname ~= "" and verticalFollowArmed() and not seeLeaderAnywhere(lname) then
-    tryExaniTera()
-    useSurroundingTiles()
-  end
+  followEngine.onTargetMoved(creature, newPos, oldPos, lname)
+  followEngine.onLocalPlayerAscend(creature, newPos, oldPos, lname)
 end)
 
 local btnClearFollow
 
 local function clearFollow()
   storage.followLeader = ""
-  clearVerticalFollow()
-  clearWalkDestMemory()
+  followEngine.clear()
+  followWalkMem.clear()
   if g_game and g_game.cancelAttackAndFollow then
     pcall(function() g_game.cancelAttackAndFollow() end)
   end
@@ -1627,13 +1154,12 @@ macro(150, function()
   local on = followMacro:isOn()
   if on and not followWasOn then
     storage.followLeader = ""
-    clearVerticalFollow()
-    clearWalkDestMemory()
+    followEngine.clear()
+    followWalkMem.clear()
   end
   followWasOn = on
   storage._followEnabled = on
 end)
-
 
 
 -- ========== 014_bugmap.lua ==========
