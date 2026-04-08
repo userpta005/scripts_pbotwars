@@ -2350,7 +2350,13 @@ macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
       lastActionAt = now
       lastEquipOkAt = now
       storage.ringCrowdManaged = true
-      storage.ringCrowdManagedId = equippedAltId > 0 and equippedAltId or bagId
+      local rOn = getEquippedRing()
+      local idOn = itemId(rOn)
+      if idOn > 0 then
+        storage.ringCrowdManagedId = idOn
+      else
+        storage.ringCrowdManagedId = (equippedAltId > 0 and equippedAltId) or bagId
+      end
     end
     return
   end
@@ -2362,10 +2368,11 @@ macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
       storage.ringCrowdManagedId = 0
       return
     end
-    local canUnequipManaged = storage.ringCrowdManaged == true
+    local legacyManaged = storage.ringCrowdManaged == true and managedId <= 0
+    local idMatchesManaged = storage.ringCrowdManaged == true
         and managedId > 0
         and equippedId == managedId
-    if not (wearingTargetRing or canUnequipManaged) then return end
+    if not (wearingTargetRing or legacyManaged or idMatchesManaged) then return end
     if unequipOneRing(ring) then
       lastActionAt = now
       lastUnequipOkAt = now
