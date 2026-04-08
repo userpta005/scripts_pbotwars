@@ -14,6 +14,8 @@
     - Timers separados: precisa manter >= limiar por STABLE_EQUIP_MS para equipar;
       precisa manter < limiar por STABLE_UNEQUIP_MS para desequipar (oscilar 3/4 nao reseta o timer errado).
     - Apos equip/unequip com sucesso, bloqueia a acao oposta por POST_*_LOCK_MS.
+
+  Pensado para PvE; em PvP desliga a macro ou storage.ringCrowdEnabled = false.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
@@ -21,7 +23,6 @@ if knightEnsureStorage then
   knightEnsureStorage({
     ringCrowdEnabled = true,
     ringCrowdManaged = false,
-    ringCrowdManagedId = 0,
   })
 end
 
@@ -207,12 +208,9 @@ macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
   local ring = getEquippedRing()
   local equippedId = itemId(ring)
   local wearingTargetRing = isTargetRingEquipped(equippedId, bagId, equippedAltId)
-  local managedId = tonumber(storage.ringCrowdManagedId) or 0
 
   if wearingTargetRing and storage.ringCrowdManaged ~= true then
     storage.ringCrowdManaged = true
-    storage.ringCrowdManagedId = equippedId
-    managedId = equippedId
   end
 
   if monsters >= MONSTER_THRESHOLD and allowEquip then
@@ -224,13 +222,6 @@ macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
       lastActionAt = now
       lastEquipOkAt = now
       storage.ringCrowdManaged = true
-      local rOn = getEquippedRing()
-      local idOn = itemId(rOn)
-      if idOn > 0 then
-        storage.ringCrowdManagedId = idOn
-      else
-        storage.ringCrowdManagedId = (equippedAltId > 0 and equippedAltId) or bagId
-      end
     end
     return
   end
@@ -239,19 +230,13 @@ macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
     if now - lastEquipOkAt < POST_EQUIP_LOCK_MS then return end
     if not ring then
       storage.ringCrowdManaged = false
-      storage.ringCrowdManagedId = 0
       return
     end
-    local legacyManaged = storage.ringCrowdManaged == true and managedId <= 0
-    local idMatchesManaged = storage.ringCrowdManaged == true
-        and managedId > 0
-        and equippedId == managedId
-    if not (wearingTargetRing or legacyManaged or idMatchesManaged) then return end
+    if not (wearingTargetRing or storage.ringCrowdManaged == true) then return end
     if unequipOneRing(ring) then
       lastActionAt = now
       lastUnequipOkAt = now
       storage.ringCrowdManaged = false
-      storage.ringCrowdManagedId = 0
     end
   end
 end)
