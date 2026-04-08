@@ -1,50 +1,60 @@
 --[[
   021_auto_ring_crowd.lua
-  Equipa anel automaticamente quando houver muitos monstros proximos e desequipa quando normaliza.
+  Equipa ring quando ha monstros suficientes no raio; desequipa quando abaixo do limite.
 
-  Config:
-    RING_ID            -> clientId do anel (default 6299)
-    MONSTER_THRESHOLD  -> minimo de monstros para equipar (default 4)
-    CHECK_RADIUS       -> raio em sqm para contagem (default 6)
-    SAME_FLOOR_ONLY    -> contar so no mesmo andar (default true)
+  Config (codigo):
+    RING_BAG_ID, RING_EQUIPPED_ID
+    MONSTER_THRESHOLD  -> >= equipa; < desequipa (default 4)
+    CHECK_RADIUS       -> sqm (default 10; ajuste no codigo)
+    SAME_FLOOR_ONLY
+
+  Anti-loop (varias rings na BP):
+    - Move so 1 unidade para o dedo / para o container.
+    - Nao equipa da BP se o dedo ja tiver OUTRO item (evita swap infinito).
+    - Timers separados: precisa manter >= limiar por STABLE_EQUIP_MS para equipar;
+      precisa manter < limiar por STABLE_UNEQUIP_MS para desequipar (oscilar 3/4 nao reseta o timer errado).
+    - Apos equip/unequip com sucesso, bloqueia a acao oposta por POST_*_LOCK_MS.
 ]]
 
 storage = (type(storage) == "table" and storage) or {}
 if knightEnsureStorage then
   knightEnsureStorage({
     ringCrowdEnabled = true,
-    ringCrowdRingId = 6299,
-    ringCrowdEquippedId = 1128,
     ringCrowdManaged = false,
   })
 end
 
--- Configuracao via codigo (sem campo UI):
--- RING_BAG_ID: id do ring no container
--- RING_EQUIPPED_ID: id do ring quando equipado (se transformar)
 local RING_BAG_ID = 6299
 local RING_EQUIPPED_ID = 1128
 
 local MONSTER_THRESHOLD = 4
-local CHECK_RADIUS = 6
+local CHECK_RADIUS = 10
 local SAME_FLOOR_ONLY = true
 
 local CHECK_MS = 220
-local ACTION_GAP_MS = 450
+local ACTION_GAP_MS = 650
+local STABLE_EQUIP_MS = 700
+local STABLE_UNEQUIP_MS = 900
+local POST_EQUIP_LOCK_MS = 2200
+local POST_UNEQUIP_LOCK_MS = 2200
 
 local lastActionAt = 0
+local lastEquipOkAt = 0
+local lastUnequipOkAt = 0
+local equipSince = nil
+local unequipSince = nil
 
-local function getConfiguredRingId()
+local function getRingBagId()
   return RING_BAG_ID
 end
 
-local function getConfiguredEquippedId()
+local function getRingEquippedId()
   return RING_EQUIPPED_ID
 end
 
-local function isTargetRingEquipped(equippedId, ringId, equippedAltId)
+local function isTargetRingEquipped(equippedId, bagId, equippedAltId)
   if type(equippedId) ~= "number" or equippedId <= 0 then return false end
-  if equippedId == ringId then return true end
+  if equippedId == bagId then return true end
   if equippedAltId > 0 and equippedId == equippedAltId then return true end
   return false
 end
@@ -89,37 +99,37 @@ local function findRingInContainers(id)
   if not getContainers then return nil end
   local ok, containers = pcall(getContainers)
   if not ok or type(containers) ~= "table" then return nil end
+  local best, bestCount = nil, 999999
   for _, c in pairs(containers) do
     if c and c.getItems then
       for _, it in ipairs(c:getItems() or {}) do
         if itemId(it) == id then
-          return it
+          local cnt = 1
+          pcall(function() cnt = it:getCount() end)
+          if cnt < bestCount then
+            best, bestCount = it, cnt
+          end
         end
       end
     end
   end
-  return nil
+  return best
 end
 
-local function moveItemToRingSlot(item)
+local function moveOneRingToSlot(item)
   if not item then return false end
   local slot = ringSlotIndex()
-  local moved = false
-
   if moveToSlot then
     local ok = pcall(function() moveToSlot(item, slot) end)
     if ok then return true end
   end
-
   if g_game and g_game.move then
-    local count = 1
-    pcall(function() count = item:getCount() end)
     local ok = pcall(function()
-      g_game.move(item, { x = 65535, y = slot, z = 0 }, math.max(1, count))
+      g_game.move(item, { x = 65535, y = slot, z = 0 }, 1)
     end)
-    moved = ok and true or false
+    return ok and true or false
   end
-  return moved
+  return false
 end
 
 local function findContainerFreeSlot()
@@ -131,9 +141,7 @@ local function findContainerFreeSlot()
       local items = c:getItems() or {}
       local capOk, cap = pcall(function() return c:getCapacity() end)
       if capOk and type(cap) == "number" and #items < cap then
-        -- Alguns clientes usam index 0-based, outros 1-based.
-        local candidates = { #items, #items + 1 }
-        for _, idx in ipairs(candidates) do
+        for _, idx in ipairs({ #items, #items + 1 }) do
           local posOk, slotPos = pcall(function() return c:getSlotPosition(idx) end)
           if posOk and slotPos then return slotPos end
         end
@@ -143,13 +151,11 @@ local function findContainerFreeSlot()
   return nil
 end
 
-local function unequipRing(item)
+local function unequipOneRing(item)
   if not item or not g_game or not g_game.move then return false end
   local dest = findContainerFreeSlot()
   if not dest then return false end
-  local count = 1
-  pcall(function() count = item:getCount() end)
-  local ok = pcall(function() g_game.move(item, dest, math.max(1, count)) end)
+  local ok = pcall(function() g_game.move(item, dest, 1) end)
   return ok and true or false
 end
 
@@ -183,42 +189,52 @@ macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
   if now - lastActionAt < ACTION_GAP_MS then return end
 
   local monsters = countNearbyMonsters(CHECK_RADIUS, SAME_FLOOR_ONLY)
-  local ringId = getConfiguredRingId()
-  local equippedAltId = getConfiguredEquippedId()
+
+  if monsters >= MONSTER_THRESHOLD then
+    unequipSince = nil
+    if equipSince == nil then equipSince = now end
+  else
+    equipSince = nil
+    if unequipSince == nil then unequipSince = now end
+  end
+
+  local allowEquip = equipSince ~= nil and (now - equipSince) >= STABLE_EQUIP_MS
+  local allowUnequip = unequipSince ~= nil and (now - unequipSince) >= STABLE_UNEQUIP_MS
+
+  local bagId = getRingBagId()
+  local equippedAltId = getRingEquippedId()
   local ring = getEquippedRing()
   local equippedId = itemId(ring)
-  local atk = knightAttackingCreature and knightAttackingCreature() or nil
-  local attackingMonster = atk and atk.isMonster and atk:isMonster() or false
-  local shouldEquip = attackingMonster and monsters >= MONSTER_THRESHOLD
-  local wearingTargetRing = isTargetRingEquipped(equippedId, ringId, equippedAltId)
+  local wearingTargetRing = isTargetRingEquipped(equippedId, bagId, equippedAltId)
 
-  -- Recupera o estado após reload: se já estiver usando o ring alvo, marca como gerenciado.
   if wearingTargetRing and storage.ringCrowdManaged ~= true then
     storage.ringCrowdManaged = true
   end
 
-  if shouldEquip then
+  if monsters >= MONSTER_THRESHOLD and allowEquip then
+    if now - lastUnequipOkAt < POST_UNEQUIP_LOCK_MS then return end
     if wearingTargetRing then return end
-    local bagRing = findRingInContainers(ringId)
-    if bagRing and moveItemToRingSlot(bagRing) then
+    if ring and not wearingTargetRing then return end
+    local bagRing = findRingInContainers(bagId)
+    if bagRing and moveOneRingToSlot(bagRing) then
       lastActionAt = now
+      lastEquipOkAt = now
       storage.ringCrowdManaged = true
     end
     return
   end
 
-  local shouldUnequip = (not attackingMonster) or monsters < MONSTER_THRESHOLD
-  if not ring then
-    storage.ringCrowdManaged = false
-    return
-  end
-
-  -- Se fomos nós que equipamos, remove mesmo que o ID do item mude ao equipar.
-  local canRemoveManaged = storage.ringCrowdManaged == true
-  if shouldUnequip and (canRemoveManaged or wearingTargetRing) and unequipRing(ring) then
-    lastActionAt = now
-    storage.ringCrowdManaged = false
+  if monsters < MONSTER_THRESHOLD and allowUnequip then
+    if now - lastEquipOkAt < POST_EQUIP_LOCK_MS then return end
+    if not ring then
+      storage.ringCrowdManaged = false
+      return
+    end
+    if not (storage.ringCrowdManaged == true or wearingTargetRing) then return end
+    if unequipOneRing(ring) then
+      lastActionAt = now
+      lastUnequipOkAt = now
+      storage.ringCrowdManaged = false
+    end
   end
 end)
-
-
