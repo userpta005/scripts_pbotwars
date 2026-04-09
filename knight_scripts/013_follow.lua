@@ -4,6 +4,7 @@
   Com a macro ligada, o próximo player atacado passa a ser `followLeader`. Perseguição por
   `autoWalk`; mudança de Z via motor partilhado (`knightCreateVerticalEngine` de 002).
   Uses em sqm adjacentes via `knightMapUseTopThing` (002).
+  Para não ficar com attack/chase preso no líder: `cancelAttackAndFollow` + chase mode 0 se estava em 1.
 
   Exclusão mútua automática com 012 Auto Chase.
   Depende de: 002_storage_init.lua
@@ -51,9 +52,22 @@ local followWalkMem = knightCreateWalkMemory(145, 320)
 local lastLadderUseAt = 0
 local followWasOn = false
 
-local function safeCancelAttack()
-  if g_game and g_game.cancelAttack then
+--- cancelAttack so nao basta: o client pode manter chase/attack no alvo; preferir cancelAttackAndFollow.
+local function haltCombatOnLeader()
+  if not g_game then return end
+  if g_game.cancelAttackAndFollow then
+    pcall(function() g_game.cancelAttackAndFollow() end)
+  elseif g_game.cancelAttack then
     pcall(function() g_game.cancelAttack() end)
+  end
+end
+
+--- 012 usa setChaseMode(1) para chase; com Follow activo força 0 para nao "colar" attack no lider.
+local function enforceStandChaseWhileFollow()
+  if not g_game or not g_game.getChaseMode or not g_game.setChaseMode then return end
+  local ok, m = pcall(function() return g_game.getChaseMode() end)
+  if ok and m == 1 then
+    pcall(function() g_game.setChaseMode(0) end)
   end
 end
 
@@ -68,7 +82,7 @@ local function cancelAttackIfTargetingLeader(lname)
   if not ok or not cur then return end
   local nOk, n = pcall(function() return cur:getName() end)
   if nOk and type(n) == "string" and nameMatch(lname, n) then
-    safeCancelAttack()
+    haltCombatOnLeader()
   end
 end
 
@@ -96,7 +110,7 @@ onAttackingCreatureChange(function(creature)
   if name == "" then return end
   storage.followLeader = name
   storage._target = ""
-  safeCancelAttack()
+  haltCombatOnLeader()
 end)
 
 macro(FOLLOW_POLL_MS, function()
@@ -106,6 +120,7 @@ macro(FOLLOW_POLL_MS, function()
   local lname = trim(storage.followLeader or "")
   if lname == "" then return end
   cancelAttackIfTargetingLeader(lname)
+  enforceStandChaseWhileFollow()
   if not autoWalk then return end
 
   local lzOk, lz = pcall(function() return posz() end)
