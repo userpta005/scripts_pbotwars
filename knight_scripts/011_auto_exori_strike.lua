@@ -7,7 +7,7 @@ storage = (type(storage) == "table" and storage) or {}
 
 local SPELL = "exori strike"
 local lastCast = 0
-local GAP_MS = 2000
+local GAP_MS = 1650
 local MIN_MANA = 800
 
 local function strikeReady()
@@ -20,9 +20,12 @@ local function strikeReady()
   return knightSpellReady(lastCast, GAP_MS, MIN_MANA)
 end
 
-knightExoriStrikeMacro = macro(180, "Auto Exori Strike", "Shift+7", function()
+knightExoriStrikeMacro = macro(110, "Auto Exori Strike", "Shift+7", function()
   if not strikeReady() then return end
-  if not knightGlobalCastReady(600) then return end
+  if not knightGlobalCastReady(520) then return end
+  local t = knightAttackingCreature()
+  local tp = t and knightTargetPosPair(t) or nil
+  if tp and knightFaceTowardPosition then knightFaceTowardPosition(tp) end
   knightSpellSay(SPELL)
   lastCast = now
   knightTouchGlobalCast()

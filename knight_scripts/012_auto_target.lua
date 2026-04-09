@@ -4,6 +4,7 @@
   - Auto Target (Shift+Q): mantém `g_game.attack` no jogador lockado no mesmo piso.
   - Auto Chase (2): chase mode 1; mesma lógica vertical que Auto Follow (escadas, buracos, etc.)
     via `knightCreateVerticalEngine` (002).
+  - Full Chase (Ctrl+2): apenas mantém chase mode 1 sempre ativo (sem lock, sem autowalk).
 
   Auto Follow está em 013: só seguir alguém sem atacar (uso típico PvE). Nunca usar 012 e 013 juntos;
   o pack desliga um quando o outro entra em conflito.
@@ -18,6 +19,7 @@ if knightEnsureStorage then
     lastAttacked = "",
     _targetEnabled = false,
     _chaseEnabled = false,
+    _fullChaseEnabled = false,
     _chaseVerticalUntil = 0,
     _chaseLadderFx = nil,
     _chaseLadderFy = nil,
@@ -66,6 +68,7 @@ local chaseWasOn = false
 
 local autoTargetMacro
 local autoChaseMacro
+local fullChaseMacro
 
 local function safeSetOff(m)
   if not m or not m.setOff then return end
@@ -218,6 +221,15 @@ autoChaseMacro = macro(CHASE_POLL_MS, "Auto Chase", "2", function()
   end
 end)
 
+fullChaseMacro = macro(120, "Full Chase", "Ctrl+2", function()
+  if not fullChaseMacro or fullChaseMacro:isOff() then return end
+  disableFollowIfNeeded()
+  if g_game and g_game.getChaseMode and g_game.setChaseMode then
+    local okMode, m = pcall(function() return g_game.getChaseMode() end)
+    if okMode and m ~= 1 then pcall(function() g_game.setChaseMode(1) end) end
+  end
+end)
+
 local btnClear
 local function doClear()
   storage._target = ""
@@ -258,7 +270,9 @@ macro(150, function()
   chaseWasOn = on and true or false
   storage._targetEnabled = macroIsOn(autoTargetMacro)
   storage._chaseEnabled = on
+  storage._fullChaseEnabled = macroIsOn(fullChaseMacro)
 end)
 
 knightAutoTargetMacro = autoTargetMacro
 knightAutoChaseMacro = autoChaseMacro
+knightFullChaseMacro = fullChaseMacro

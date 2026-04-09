@@ -7,7 +7,7 @@ storage = (type(storage) == "table" and storage) or {}
 
 local SPELL = "mas exori hur"
 local lastCast = 0
-local GAP_MS = 2200
+local GAP_MS = 2000
 local MIN_MANA = 1400
 
 local function masHurReady()
@@ -20,9 +20,13 @@ local function masHurReady()
   return knightSpellReady(lastCast, GAP_MS, MIN_MANA)
 end
 
-knightMasExoriHurMacro = macro(200, "Mas Exori Hur", "Shift+5", function()
+knightMasExoriHurMacro = macro(150, "Mas Exori Hur", "Shift+5", function()
   if not masHurReady() then return end
-  if not knightGlobalCastReady(600) then return end
+  if not knightGlobalCastReady(520) then return end
+  local t = knightAttackingCreature()
+  local tp = t and knightTargetPosPair(t) or nil
+  if tp and knightTryStepSideForDiagonal and knightTryStepSideForDiagonal(tp, 190) then return end
+  if tp and knightFaceTowardPosition then knightFaceTowardPosition(tp) end
   knightSpellSay(SPELL)
   lastCast = now
   knightTouchGlobalCast()

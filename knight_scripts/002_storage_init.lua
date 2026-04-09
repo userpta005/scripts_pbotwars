@@ -143,6 +143,105 @@ function knightTargetPosPair(creature)
   return tp, mp
 end
 
+--- Direção de tile para tile (OTClient/bot: 0=N, 1=E, 2=S, 3=W — ver 009_anti_kick.lua).
+function knightDirectionTowardTile(fromPos, toPos)
+  if not fromPos or not toPos then return nil end
+  local dx = toPos.x - fromPos.x
+  local dy = toPos.y - fromPos.y
+  if dx == 0 and dy == 0 then return nil end
+  if math.abs(dx) >= math.abs(dy) then
+    if dx > 0 then return 1 end
+    if dx < 0 then return 3 end
+  end
+  if dy > 0 then return 2 end
+  return 0
+end
+
+--- Vira o personagem para olhar para `toPos` antes de spells corpo-a-corpo (exori strike, mas hur).
+function knightFaceTowardPosition(toPos)
+  if not toPos then return end
+  local mp = pos and pos() or nil
+  if not mp then return end
+  local dir = knightDirectionTowardTile(mp, toPos)
+  if dir == nil then return end
+  local cur = nil
+  local function tryDir(getter)
+    if not getter then return end
+    local ok, d = pcall(getter)
+    if ok and type(d) == "number" then return d end
+    return nil
+  end
+  cur = tryDir(function()
+    if player and player.getDirection then return player:getDirection() end
+  end)
+  if cur == nil then
+    cur = tryDir(function()
+      if localPlayer and localPlayer.getDirection then return localPlayer:getDirection() end
+    end)
+  end
+  if cur == nil and g_game and g_game.getLocalPlayer then
+    cur = tryDir(function()
+      local lp = g_game.getLocalPlayer()
+      if lp and lp.getDirection then return lp:getDirection() end
+    end)
+  end
+  if cur == dir then return end
+  if turn then
+    pcall(function() turn(dir) end)
+  end
+end
+
+local function knightTileIsFreeForStep(p)
+  if not p or not g_map or not g_map.getTile then return false end
+  local tOk, tile = pcall(function() return g_map.getTile(p) end)
+  if not tOk or not tile then return false end
+  local wOk, walkable = pcall(function() return tile:isWalkable() end)
+  if not wOk or not walkable then return false end
+  local cOk, creatures = pcall(function() return tile:getCreatures() end)
+  if cOk and type(creatures) == "table" then
+    for _, _ in ipairs(creatures) do
+      return false
+    end
+  end
+  return true
+end
+
+--- Se estiver na diagonal do alvo, tenta passo lateral para ficar cardinal antes do cast.
+function knightTryStepSideForDiagonal(targetPos, minGapMs)
+  if not targetPos or not autoWalk then return false end
+  local mp = pos and pos() or nil
+  if not mp or mp.z ~= targetPos.z then return false end
+  if getDistanceBetween(mp, targetPos) > 1 then return false end
+
+  local dx = targetPos.x - mp.x
+  local dy = targetPos.y - mp.y
+  local isDiagonal = (math.abs(dx) == 1 and math.abs(dy) == 1)
+  if not isDiagonal then return false end
+
+  if knightIsWalking and knightIsWalking() then return true end
+
+  if type(now) ~= "number" then return false end
+  local gap = minGapMs or 190
+  local last = storage._lastDiagStepAt or 0
+  if type(last) == "number" and last > 0 and (now - last) < gap then return true end
+
+  local cands = {
+    -- Sai da diagonal para cardinal: (target.x, my.y) ou (my.x, target.y).
+    { x = targetPos.x, y = mp.y, z = targetPos.z },
+    { x = mp.x, y = targetPos.y, z = targetPos.z },
+  }
+
+  for _, cp in ipairs(cands) do
+    if getDistanceBetween(mp, cp) == 1 and getDistanceBetween(cp, targetPos) == 1 and knightTileIsFreeForStep(cp) then
+      storage._lastDiagStepAt = now
+      pcall(function() autoWalk(cp, 20, { ignoreNonPathable = true, precision = 1 }) end)
+      return true
+    end
+  end
+  -- Continua segurando o cast ate sair da diagonal.
+  return true
+end
+
 function knightFindLockedPlayer(lockName, sameFloorOnly)
   local tname = knightTrim(lockName or "")
   if tname == "" then return nil end

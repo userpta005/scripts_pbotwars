@@ -4,7 +4,7 @@
   Monolito auto-gerado a partir de knight_scripts/*.lua.
   Inclui scripts 001..021.
   NAO EDITAR MANUALMENTE - regenerar a partir dos modulares.
-  Ordem: 001..021.
+  Ordem: 001..018, 021, 019, 020 (Exiva/HUD por último).
 ]]
 
 if type(setDefaultTab) == "function" then
@@ -202,6 +202,105 @@ function knightTargetPosPair(creature)
   local ok, tp = pcall(function() return creature:getPosition() end)
   if not ok or not tp then return nil, nil end
   return tp, mp
+end
+
+--- Direção de tile para tile (OTClient/bot: 0=N, 1=E, 2=S, 3=W — ver 009_anti_kick.lua).
+function knightDirectionTowardTile(fromPos, toPos)
+  if not fromPos or not toPos then return nil end
+  local dx = toPos.x - fromPos.x
+  local dy = toPos.y - fromPos.y
+  if dx == 0 and dy == 0 then return nil end
+  if math.abs(dx) >= math.abs(dy) then
+    if dx > 0 then return 1 end
+    if dx < 0 then return 3 end
+  end
+  if dy > 0 then return 2 end
+  return 0
+end
+
+--- Vira o personagem para olhar para `toPos` antes de spells corpo-a-corpo (exori strike, mas hur).
+function knightFaceTowardPosition(toPos)
+  if not toPos then return end
+  local mp = pos and pos() or nil
+  if not mp then return end
+  local dir = knightDirectionTowardTile(mp, toPos)
+  if dir == nil then return end
+  local cur = nil
+  local function tryDir(getter)
+    if not getter then return end
+    local ok, d = pcall(getter)
+    if ok and type(d) == "number" then return d end
+    return nil
+  end
+  cur = tryDir(function()
+    if player and player.getDirection then return player:getDirection() end
+  end)
+  if cur == nil then
+    cur = tryDir(function()
+      if localPlayer and localPlayer.getDirection then return localPlayer:getDirection() end
+    end)
+  end
+  if cur == nil and g_game and g_game.getLocalPlayer then
+    cur = tryDir(function()
+      local lp = g_game.getLocalPlayer()
+      if lp and lp.getDirection then return lp:getDirection() end
+    end)
+  end
+  if cur == dir then return end
+  if turn then
+    pcall(function() turn(dir) end)
+  end
+end
+
+local function knightTileIsFreeForStep(p)
+  if not p or not g_map or not g_map.getTile then return false end
+  local tOk, tile = pcall(function() return g_map.getTile(p) end)
+  if not tOk or not tile then return false end
+  local wOk, walkable = pcall(function() return tile:isWalkable() end)
+  if not wOk or not walkable then return false end
+  local cOk, creatures = pcall(function() return tile:getCreatures() end)
+  if cOk and type(creatures) == "table" then
+    for _, _ in ipairs(creatures) do
+      return false
+    end
+  end
+  return true
+end
+
+--- Se estiver na diagonal do alvo, tenta passo lateral para ficar cardinal antes do cast.
+function knightTryStepSideForDiagonal(targetPos, minGapMs)
+  if not targetPos or not autoWalk then return false end
+  local mp = pos and pos() or nil
+  if not mp or mp.z ~= targetPos.z then return false end
+  if getDistanceBetween(mp, targetPos) > 1 then return false end
+
+  local dx = targetPos.x - mp.x
+  local dy = targetPos.y - mp.y
+  local isDiagonal = (math.abs(dx) == 1 and math.abs(dy) == 1)
+  if not isDiagonal then return false end
+
+  if knightIsWalking and knightIsWalking() then return true end
+
+  if type(now) ~= "number" then return false end
+  local gap = minGapMs or 190
+  local last = storage._lastDiagStepAt or 0
+  if type(last) == "number" and last > 0 and (now - last) < gap then return true end
+
+  local cands = {
+    -- Sai da diagonal para cardinal: (target.x, my.y) ou (my.x, target.y).
+    { x = targetPos.x, y = mp.y, z = targetPos.z },
+    { x = mp.x, y = targetPos.y, z = targetPos.z },
+  }
+
+  for _, cp in ipairs(cands) do
+    if getDistanceBetween(mp, cp) == 1 and getDistanceBetween(cp, targetPos) == 1 and knightTileIsFreeForStep(cp) then
+      storage._lastDiagStepAt = now
+      pcall(function() autoWalk(cp, 20, { ignoreNonPathable = true, precision = 1 }) end)
+      return true
+    end
+  end
+  -- Continua segurando o cast ate sair da diagonal.
+  return true
 end
 
 function knightFindLockedPlayer(lockName, sameFloorOnly)
@@ -716,7 +815,7 @@ storage = (type(storage) == "table" and storage) or {}
 
 local SPELL = "mas exori hur"
 local lastCast = 0
-local GAP_MS = 2200
+local GAP_MS = 2000
 local MIN_MANA = 1400
 
 local function masHurReady()
@@ -729,9 +828,13 @@ local function masHurReady()
   return knightSpellReady(lastCast, GAP_MS, MIN_MANA)
 end
 
-knightMasExoriHurMacro = macro(200, "Mas Exori Hur", "Shift+5", function()
+knightMasExoriHurMacro = macro(150, "Mas Exori Hur", "Shift+5", function()
   if not masHurReady() then return end
-  if not knightGlobalCastReady(600) then return end
+  if not knightGlobalCastReady(520) then return end
+  local t = knightAttackingCreature()
+  local tp = t and knightTargetPosPair(t) or nil
+  if tp and knightTryStepSideForDiagonal and knightTryStepSideForDiagonal(tp, 190) then return end
+  if tp and knightFaceTowardPosition then knightFaceTowardPosition(tp) end
   knightSpellSay(SPELL)
   lastCast = now
   knightTouchGlobalCast()
@@ -748,7 +851,7 @@ storage = (type(storage) == "table" and storage) or {}
 
 local SPELL = "exori strike"
 local lastCast = 0
-local GAP_MS = 2000
+local GAP_MS = 1650
 local MIN_MANA = 800
 
 local function strikeReady()
@@ -761,9 +864,12 @@ local function strikeReady()
   return knightSpellReady(lastCast, GAP_MS, MIN_MANA)
 end
 
-knightExoriStrikeMacro = macro(180, "Auto Exori Strike", "Shift+7", function()
+knightExoriStrikeMacro = macro(110, "Auto Exori Strike", "Shift+7", function()
   if not strikeReady() then return end
-  if not knightGlobalCastReady(600) then return end
+  if not knightGlobalCastReady(520) then return end
+  local t = knightAttackingCreature()
+  local tp = t and knightTargetPosPair(t) or nil
+  if tp and knightFaceTowardPosition then knightFaceTowardPosition(tp) end
   knightSpellSay(SPELL)
   lastCast = now
   knightTouchGlobalCast()
@@ -777,6 +883,7 @@ end)
   - Auto Target (Shift+Q): mantém `g_game.attack` no jogador lockado no mesmo piso.
   - Auto Chase (2): chase mode 1; mesma lógica vertical que Auto Follow (escadas, buracos, etc.)
     via `knightCreateVerticalEngine` (002).
+  - Full Chase (Ctrl+2): apenas mantém chase mode 1 sempre ativo (sem lock, sem autowalk).
 
   Auto Follow está em 013: só seguir alguém sem atacar (uso típico PvE). Nunca usar 012 e 013 juntos;
   o pack desliga um quando o outro entra em conflito.
@@ -791,6 +898,7 @@ if knightEnsureStorage then
     lastAttacked = "",
     _targetEnabled = false,
     _chaseEnabled = false,
+    _fullChaseEnabled = false,
     _chaseVerticalUntil = 0,
     _chaseLadderFx = nil,
     _chaseLadderFy = nil,
@@ -839,6 +947,7 @@ local chaseWasOn = false
 
 local autoTargetMacro
 local autoChaseMacro
+local fullChaseMacro
 
 local function safeSetOff(m)
   if not m or not m.setOff then return end
@@ -991,6 +1100,15 @@ autoChaseMacro = macro(CHASE_POLL_MS, "Auto Chase", "2", function()
   end
 end)
 
+fullChaseMacro = macro(120, "Full Chase", "Ctrl+2", function()
+  if not fullChaseMacro or fullChaseMacro:isOff() then return end
+  disableFollowIfNeeded()
+  if g_game and g_game.getChaseMode and g_game.setChaseMode then
+    local okMode, m = pcall(function() return g_game.getChaseMode() end)
+    if okMode and m ~= 1 then pcall(function() g_game.setChaseMode(1) end) end
+  end
+end)
+
 local btnClear
 local function doClear()
   storage._target = ""
@@ -1031,10 +1149,12 @@ macro(150, function()
   chaseWasOn = on and true or false
   storage._targetEnabled = macroIsOn(autoTargetMacro)
   storage._chaseEnabled = on
+  storage._fullChaseEnabled = macroIsOn(fullChaseMacro)
 end)
 
 knightAutoTargetMacro = autoTargetMacro
 knightAutoChaseMacro = autoChaseMacro
+knightFullChaseMacro = fullChaseMacro
 
 -- ========== 013_follow.lua ==========
 
@@ -1635,6 +1755,251 @@ macro(220, function()
   pcall(function() g_game.move(creature, np) end)
 end)
 
+-- ========== 021_auto_ring_crowd.lua ==========
+
+--[[
+  021_auto_ring_crowd.lua
+  Equipa ring quando ha monstros suficientes no raio; desequipa quando abaixo do limite.
+
+  Config (codigo):
+    RING_BAG_ID, RING_EQUIPPED_ID
+    MONSTER_THRESHOLD  -> >= equipa; < desequipa (default 4)
+    CHECK_RADIUS       -> sqm (default 10; ajuste no codigo)
+    SAME_FLOOR_ONLY
+
+  Anti-loop (varias rings na BP):
+    - Move so 1 unidade para o dedo / para o container.
+    - Nao equipa da BP se o dedo ja tiver OUTRO item (evita swap infinito).
+    - Timers separados: precisa manter >= limiar por STABLE_EQUIP_MS para equipar;
+      precisa manter < limiar por STABLE_UNEQUIP_MS para desequipar (oscilar 3/4 nao reseta o timer errado).
+    - Apos equip/unequip com sucesso, bloqueia a acao oposta por POST_*_LOCK_MS.
+
+  Pensado para PvE; em PvP desliga a macro ou storage.ringCrowdEnabled = false.
+]]
+
+storage = (type(storage) == "table" and storage) or {}
+if knightEnsureStorage then
+  knightEnsureStorage({
+    ringCrowdEnabled = true,
+    ringCrowdManaged = false,
+  })
+end
+
+local RING_BAG_ID = 6299
+local RING_EQUIPPED_ID = 1128
+
+local MONSTER_THRESHOLD = 4
+local CHECK_RADIUS = 10
+local SAME_FLOOR_ONLY = true
+
+local CHECK_MS = 220
+local ACTION_GAP_MS = 650
+local STABLE_EQUIP_MS = 700
+local STABLE_UNEQUIP_MS = 900
+local POST_EQUIP_LOCK_MS = 2200
+local POST_UNEQUIP_LOCK_MS = 2200
+
+local lastActionAt = 0
+local lastEquipOkAt = 0
+local lastUnequipOkAt = 0
+local equipSince = nil
+local unequipSince = nil
+
+local function getRingBagId()
+  return RING_BAG_ID
+end
+
+local function getRingEquippedId()
+  return RING_EQUIPPED_ID
+end
+
+local function isTargetRingEquipped(equippedId, bagId, equippedAltId)
+  if type(equippedId) ~= "number" or equippedId <= 0 then return false end
+  if equippedId == bagId then return true end
+  if equippedAltId > 0 and equippedId == equippedAltId then return true end
+  return false
+end
+
+local function ringSlotIndex()
+  if type(InventorySlot) == "table" then
+    if type(InventorySlot.Ring) == "number" then return InventorySlot.Ring end
+    if type(InventorySlot.Finger) == "number" then return InventorySlot.Finger end
+  end
+  if type(InventorySlotRing) == "number" then return InventorySlotRing end
+  if type(InventorySlotFinger) == "number" then return InventorySlotFinger end
+  if type(SlotRing) == "number" then return SlotRing end
+  if type(SlotFinger) == "number" then return SlotFinger end
+  return 9
+end
+
+local function getEquippedRing()
+  if getFinger then
+    local ok, item = pcall(getFinger)
+    if ok and item then return item end
+  end
+  local slot = ringSlotIndex()
+  if getInventoryItem then
+    local ok, item = pcall(function() return getInventoryItem(slot) end)
+    if ok and item then return item end
+  end
+  if player and player.getInventoryItem then
+    local ok, item = pcall(function() return player:getInventoryItem(slot) end)
+    if ok and item then return item end
+  end
+  return nil
+end
+
+local function itemId(item)
+  if not item or not item.getId then return 0 end
+  local ok, id = pcall(function() return item:getId() end)
+  if ok and type(id) == "number" then return id end
+  return 0
+end
+
+local function findRingInContainers(id)
+  if not getContainers then return nil end
+  local ok, containers = pcall(getContainers)
+  if not ok or type(containers) ~= "table" then return nil end
+  local best, bestCount = nil, 999999
+  for _, c in pairs(containers) do
+    if c and c.getItems then
+      for _, it in ipairs(c:getItems() or {}) do
+        if itemId(it) == id then
+          local cnt = 1
+          pcall(function() cnt = it:getCount() end)
+          if cnt < bestCount then
+            best, bestCount = it, cnt
+          end
+        end
+      end
+    end
+  end
+  return best
+end
+
+local function moveOneRingToSlot(item)
+  if not item then return false end
+  local slot = ringSlotIndex()
+  if moveToSlot then
+    local ok = pcall(function() moveToSlot(item, slot) end)
+    if ok then return true end
+  end
+  if g_game and g_game.move then
+    local ok = pcall(function()
+      g_game.move(item, { x = 65535, y = slot, z = 0 }, 1)
+    end)
+    return ok and true or false
+  end
+  return false
+end
+
+local function findContainerFreeSlot()
+  if not getContainers then return nil end
+  local ok, containers = pcall(getContainers)
+  if not ok or type(containers) ~= "table" then return nil end
+  for _, c in pairs(containers) do
+    if c and c.getItems and c.getCapacity and c.getSlotPosition then
+      local items = c:getItems() or {}
+      local capOk, cap = pcall(function() return c:getCapacity() end)
+      if capOk and type(cap) == "number" and #items < cap then
+        for _, idx in ipairs({ #items, #items + 1 }) do
+          local posOk, slotPos = pcall(function() return c:getSlotPosition(idx) end)
+          if posOk and slotPos then return slotPos end
+        end
+      end
+    end
+  end
+  return nil
+end
+
+local function unequipOneRing(item)
+  if not item or not g_game or not g_game.move then return false end
+  local dest = findContainerFreeSlot()
+  if not dest then return false end
+  local ok = pcall(function() g_game.move(item, dest, 1) end)
+  return ok and true or false
+end
+
+local function countNearbyMonsters(radius, sameFloorOnly)
+  if not getSpectators then return 0 end
+  local ok, specs = pcall(function() return getSpectators() end)
+  if not ok or type(specs) ~= "table" then return 0 end
+  local myPos = pos and pos() or nil
+  if not myPos then return 0 end
+
+  local total = 0
+  for _, c in pairs(specs) do
+    if c and c.isMonster and c:isMonster() then
+      local pOk, cp = pcall(function() return c:getPosition() end)
+      if pOk and cp then
+        if (not sameFloorOnly or cp.z == myPos.z) and getDistanceBetween(myPos, cp) <= radius then
+          local hOk, hp = pcall(function() return c:getHealthPercent() end)
+          if not hOk or (type(hp) == "number" and hp > 0) then
+            total = total + 1
+          end
+        end
+      end
+    end
+  end
+  return total
+end
+
+macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
+  if knightChatOpen and knightChatOpen() then return end
+  if storage.ringCrowdEnabled == false then return end
+  if now - lastActionAt < ACTION_GAP_MS then return end
+
+  local monsters = countNearbyMonsters(CHECK_RADIUS, SAME_FLOOR_ONLY)
+
+  if monsters >= MONSTER_THRESHOLD then
+    unequipSince = nil
+    if equipSince == nil then equipSince = now end
+  else
+    equipSince = nil
+    if unequipSince == nil then unequipSince = now end
+  end
+
+  local allowEquip = equipSince ~= nil and (now - equipSince) >= STABLE_EQUIP_MS
+  local allowUnequip = unequipSince ~= nil and (now - unequipSince) >= STABLE_UNEQUIP_MS
+
+  local bagId = getRingBagId()
+  local equippedAltId = getRingEquippedId()
+  local ring = getEquippedRing()
+  local equippedId = itemId(ring)
+  local wearingTargetRing = isTargetRingEquipped(equippedId, bagId, equippedAltId)
+
+  if wearingTargetRing and storage.ringCrowdManaged ~= true then
+    storage.ringCrowdManaged = true
+  end
+
+  if monsters >= MONSTER_THRESHOLD and allowEquip then
+    if now - lastUnequipOkAt < POST_UNEQUIP_LOCK_MS then return end
+    if wearingTargetRing then return end
+    if ring and not wearingTargetRing then return end
+    local bagRing = findRingInContainers(bagId)
+    if bagRing and moveOneRingToSlot(bagRing) then
+      lastActionAt = now
+      lastEquipOkAt = now
+      storage.ringCrowdManaged = true
+    end
+    return
+  end
+
+  if monsters < MONSTER_THRESHOLD and allowUnequip then
+    if now - lastEquipOkAt < POST_EQUIP_LOCK_MS then return end
+    if not ring then
+      storage.ringCrowdManaged = false
+      return
+    end
+    if not (wearingTargetRing or storage.ringCrowdManaged == true) then return end
+    if unequipOneRing(ring) then
+      lastActionAt = now
+      lastUnequipOkAt = now
+      storage.ringCrowdManaged = false
+    end
+  end
+end)
+
 -- ========== 019_exiva.lua ==========
 
 --[[
@@ -2139,249 +2504,4 @@ macro(280, function()
   elseif targetOn and tgt ~= "" then mode, mc = "Mode: lock", "#66ff66"
   end
   setHud(6, mode, mc)
-end)
-
--- ========== 021_auto_ring_crowd.lua ==========
-
---[[
-  021_auto_ring_crowd.lua
-  Equipa ring quando ha monstros suficientes no raio; desequipa quando abaixo do limite.
-
-  Config (codigo):
-    RING_BAG_ID, RING_EQUIPPED_ID
-    MONSTER_THRESHOLD  -> >= equipa; < desequipa (default 4)
-    CHECK_RADIUS       -> sqm (default 10; ajuste no codigo)
-    SAME_FLOOR_ONLY
-
-  Anti-loop (varias rings na BP):
-    - Move so 1 unidade para o dedo / para o container.
-    - Nao equipa da BP se o dedo ja tiver OUTRO item (evita swap infinito).
-    - Timers separados: precisa manter >= limiar por STABLE_EQUIP_MS para equipar;
-      precisa manter < limiar por STABLE_UNEQUIP_MS para desequipar (oscilar 3/4 nao reseta o timer errado).
-    - Apos equip/unequip com sucesso, bloqueia a acao oposta por POST_*_LOCK_MS.
-
-  Pensado para PvE; em PvP desliga a macro ou storage.ringCrowdEnabled = false.
-]]
-
-storage = (type(storage) == "table" and storage) or {}
-if knightEnsureStorage then
-  knightEnsureStorage({
-    ringCrowdEnabled = true,
-    ringCrowdManaged = false,
-  })
-end
-
-local RING_BAG_ID = 6299
-local RING_EQUIPPED_ID = 1128
-
-local MONSTER_THRESHOLD = 4
-local CHECK_RADIUS = 10
-local SAME_FLOOR_ONLY = true
-
-local CHECK_MS = 220
-local ACTION_GAP_MS = 650
-local STABLE_EQUIP_MS = 700
-local STABLE_UNEQUIP_MS = 900
-local POST_EQUIP_LOCK_MS = 2200
-local POST_UNEQUIP_LOCK_MS = 2200
-
-local lastActionAt = 0
-local lastEquipOkAt = 0
-local lastUnequipOkAt = 0
-local equipSince = nil
-local unequipSince = nil
-
-local function getRingBagId()
-  return RING_BAG_ID
-end
-
-local function getRingEquippedId()
-  return RING_EQUIPPED_ID
-end
-
-local function isTargetRingEquipped(equippedId, bagId, equippedAltId)
-  if type(equippedId) ~= "number" or equippedId <= 0 then return false end
-  if equippedId == bagId then return true end
-  if equippedAltId > 0 and equippedId == equippedAltId then return true end
-  return false
-end
-
-local function ringSlotIndex()
-  if type(InventorySlot) == "table" then
-    if type(InventorySlot.Ring) == "number" then return InventorySlot.Ring end
-    if type(InventorySlot.Finger) == "number" then return InventorySlot.Finger end
-  end
-  if type(InventorySlotRing) == "number" then return InventorySlotRing end
-  if type(InventorySlotFinger) == "number" then return InventorySlotFinger end
-  if type(SlotRing) == "number" then return SlotRing end
-  if type(SlotFinger) == "number" then return SlotFinger end
-  return 9
-end
-
-local function getEquippedRing()
-  if getFinger then
-    local ok, item = pcall(getFinger)
-    if ok and item then return item end
-  end
-  local slot = ringSlotIndex()
-  if getInventoryItem then
-    local ok, item = pcall(function() return getInventoryItem(slot) end)
-    if ok and item then return item end
-  end
-  if player and player.getInventoryItem then
-    local ok, item = pcall(function() return player:getInventoryItem(slot) end)
-    if ok and item then return item end
-  end
-  return nil
-end
-
-local function itemId(item)
-  if not item or not item.getId then return 0 end
-  local ok, id = pcall(function() return item:getId() end)
-  if ok and type(id) == "number" then return id end
-  return 0
-end
-
-local function findRingInContainers(id)
-  if not getContainers then return nil end
-  local ok, containers = pcall(getContainers)
-  if not ok or type(containers) ~= "table" then return nil end
-  local best, bestCount = nil, 999999
-  for _, c in pairs(containers) do
-    if c and c.getItems then
-      for _, it in ipairs(c:getItems() or {}) do
-        if itemId(it) == id then
-          local cnt = 1
-          pcall(function() cnt = it:getCount() end)
-          if cnt < bestCount then
-            best, bestCount = it, cnt
-          end
-        end
-      end
-    end
-  end
-  return best
-end
-
-local function moveOneRingToSlot(item)
-  if not item then return false end
-  local slot = ringSlotIndex()
-  if moveToSlot then
-    local ok = pcall(function() moveToSlot(item, slot) end)
-    if ok then return true end
-  end
-  if g_game and g_game.move then
-    local ok = pcall(function()
-      g_game.move(item, { x = 65535, y = slot, z = 0 }, 1)
-    end)
-    return ok and true or false
-  end
-  return false
-end
-
-local function findContainerFreeSlot()
-  if not getContainers then return nil end
-  local ok, containers = pcall(getContainers)
-  if not ok or type(containers) ~= "table" then return nil end
-  for _, c in pairs(containers) do
-    if c and c.getItems and c.getCapacity and c.getSlotPosition then
-      local items = c:getItems() or {}
-      local capOk, cap = pcall(function() return c:getCapacity() end)
-      if capOk and type(cap) == "number" and #items < cap then
-        for _, idx in ipairs({ #items, #items + 1 }) do
-          local posOk, slotPos = pcall(function() return c:getSlotPosition(idx) end)
-          if posOk and slotPos then return slotPos end
-        end
-      end
-    end
-  end
-  return nil
-end
-
-local function unequipOneRing(item)
-  if not item or not g_game or not g_game.move then return false end
-  local dest = findContainerFreeSlot()
-  if not dest then return false end
-  local ok = pcall(function() g_game.move(item, dest, 1) end)
-  return ok and true or false
-end
-
-local function countNearbyMonsters(radius, sameFloorOnly)
-  if not getSpectators then return 0 end
-  local ok, specs = pcall(function() return getSpectators() end)
-  if not ok or type(specs) ~= "table" then return 0 end
-  local myPos = pos and pos() or nil
-  if not myPos then return 0 end
-
-  local total = 0
-  for _, c in pairs(specs) do
-    if c and c.isMonster and c:isMonster() then
-      local pOk, cp = pcall(function() return c:getPosition() end)
-      if pOk and cp then
-        if (not sameFloorOnly or cp.z == myPos.z) and getDistanceBetween(myPos, cp) <= radius then
-          local hOk, hp = pcall(function() return c:getHealthPercent() end)
-          if not hOk or (type(hp) == "number" and hp > 0) then
-            total = total + 1
-          end
-        end
-      end
-    end
-  end
-  return total
-end
-
-macro(CHECK_MS, "Auto Ring Crowd", "Shift+8", function()
-  if knightChatOpen and knightChatOpen() then return end
-  if storage.ringCrowdEnabled == false then return end
-  if now - lastActionAt < ACTION_GAP_MS then return end
-
-  local monsters = countNearbyMonsters(CHECK_RADIUS, SAME_FLOOR_ONLY)
-
-  if monsters >= MONSTER_THRESHOLD then
-    unequipSince = nil
-    if equipSince == nil then equipSince = now end
-  else
-    equipSince = nil
-    if unequipSince == nil then unequipSince = now end
-  end
-
-  local allowEquip = equipSince ~= nil and (now - equipSince) >= STABLE_EQUIP_MS
-  local allowUnequip = unequipSince ~= nil and (now - unequipSince) >= STABLE_UNEQUIP_MS
-
-  local bagId = getRingBagId()
-  local equippedAltId = getRingEquippedId()
-  local ring = getEquippedRing()
-  local equippedId = itemId(ring)
-  local wearingTargetRing = isTargetRingEquipped(equippedId, bagId, equippedAltId)
-
-  if wearingTargetRing and storage.ringCrowdManaged ~= true then
-    storage.ringCrowdManaged = true
-  end
-
-  if monsters >= MONSTER_THRESHOLD and allowEquip then
-    if now - lastUnequipOkAt < POST_UNEQUIP_LOCK_MS then return end
-    if wearingTargetRing then return end
-    if ring and not wearingTargetRing then return end
-    local bagRing = findRingInContainers(bagId)
-    if bagRing and moveOneRingToSlot(bagRing) then
-      lastActionAt = now
-      lastEquipOkAt = now
-      storage.ringCrowdManaged = true
-    end
-    return
-  end
-
-  if monsters < MONSTER_THRESHOLD and allowUnequip then
-    if now - lastEquipOkAt < POST_EQUIP_LOCK_MS then return end
-    if not ring then
-      storage.ringCrowdManaged = false
-      return
-    end
-    if not (wearingTargetRing or storage.ringCrowdManaged == true) then return end
-    if unequipOneRing(ring) then
-      lastActionAt = now
-      lastUnequipOkAt = now
-      storage.ringCrowdManaged = false
-    end
-  end
 end)
