@@ -1,11 +1,12 @@
 --[[
-  012_auto_target.lua — Lock de alvo PVP + Auto Chase.
+  012_auto_target.lua — PVP: Auto Target + Auto Chase (mantém lock e ataca ao colar no alvo).
 
   - Auto Target (Shift+Q): mantém `g_game.attack` no jogador lockado no mesmo piso.
-  - Auto Chase (2): força chase mode 1 e perseguição vertical via motor partilhado
-    (`knightCreateVerticalEngine` de 002).
+  - Auto Chase (2): chase mode 1; mesma lógica vertical que Auto Follow (escadas, buracos, etc.)
+    via `knightCreateVerticalEngine` (002).
 
-  Exclusão mútua automática com 013 Follow PVP.
+  Auto Follow está em 013: só seguir alguém sem atacar (uso típico PvE). Nunca usar 012 e 013 juntos;
+  o pack desliga um quando o outro entra em conflito.
   Depende de: 002_storage_init.lua, 003 recomendado (lastAttacked).
 ]]
 
@@ -25,7 +26,8 @@ if knightEnsureStorage then
 end
 
 local CHASE_POLL_MS = 85
-local SAME_FLOOR_COMFORT_DIST = 2
+-- Manter igual ao 013 (autoWalk + vertical colados ao líder/alvo).
+local SAME_FLOOR_COMFORT_DIST = 1
 local REATTACK_GAP_MS = 120
 local CHASE_ATTACK_GAP_MS = 50
 local LADDER_USE_GAP_MS = 280
@@ -50,7 +52,7 @@ local nameMatch = knightNameMatchLock or function(a, b)
 end
 
 local chaseEngine = knightCreateVerticalEngine("_chase")
-local chaseWalkMem = knightCreateWalkMemory(145, 320)
+local chaseWalkMem = knightCreateWalkMemory(100, 260)
 
 local throttleAt = {}
 local function throttle(key, ms)
@@ -180,7 +182,7 @@ autoChaseMacro = macro(CHASE_POLL_MS, "Auto Chase", "2", function()
     if sameDist <= SAME_FLOOR_COMFORT_DIST then return end
     if not chaseWalkMem.shouldWalk(lp.x, lp.y, lp.z) then return end
     pcall(function()
-      autoWalk(lp, 20, { ignoreNonPathable = true, precision = 2 })
+      autoWalk(lp, 20, { ignoreNonPathable = true, precision = 1 })
     end)
     chaseWalkMem.remember(lp.x, lp.y, lp.z)
     return
@@ -201,7 +203,7 @@ autoChaseMacro = macro(CHASE_POLL_MS, "Auto Chase", "2", function()
     end
     if not chaseWalkMem.shouldWalk(wx, wy, lz) then return end
     pcall(function()
-      autoWalk(dest, 20, { ignoreNonPathable = true, precision = 2 })
+      autoWalk(dest, 20, { ignoreNonPathable = true, precision = 1 })
     end)
     chaseWalkMem.remember(wx, wy, lz)
   end

@@ -26,8 +26,8 @@ Arquivos e objetivo:
 - 009_anti_kick.lua — rotacao anti-kick.
 - 010_combo_knight.lua — mas exori hur (turn + passo lateral).
 - 011_auto_exori_strike.lua — exori strike melee.
-- 012_auto_target.lua — lock alvo, chase, recover.
-- 013_follow.lua — follow PVP / floors.
+- 012_auto_target.lua — PVP: lock alvo, auto chase (ataca + segue), recover.
+- 013_follow.lua — PvE: auto follow (só seguir, sem atacar); vertical igual ao chase.
 - 014_bugmap.lua — bug map por teclas.
 - 015_id_cursor_map.lua — IDs sob cursor.
 - 016_pull_items.lua — puxar itens ao redor.

@@ -1,12 +1,15 @@
 --[[
-  013_follow.lua — Follow PVP (só caminha; não mantém attack no líder).
+  013_follow.lua — Auto Follow (PvE): segue o líder colado, 100% automático, sem atacar.
 
-  Com a macro ligada, o próximo player atacado passa a ser `followLeader`. Perseguição por
-  `autoWalk`; mudança de Z via motor partilhado (`knightCreateVerticalEngine` de 002).
-  Uses em sqm adjacentes via `knightMapUseTopThing` (002).
-  Para não ficar com attack/chase preso no líder: `cancelAttackAndFollow` + chase mode 0 se estava em 1.
+  O nome do ficheiro mantém-se por ordem no pack; o rótulo da macro é "Auto Follow".
+  Uso típico: party / hunt PvE — não é o módulo PVP (isso é 012 Auto Target + Auto Chase).
 
-  Exclusão mútua automática com 012 Auto Chase.
+  Com a macro ligada, o próximo player em quem atacas passa a ser `followLeader` (marcação rápida);
+  depois cancela ataque e só `autoWalk`. Mesma dinâmica vertical que Auto Chase (escadas, buracos,
+  portais) via `knightCreateVerticalEngine` (002) e `knightMapUseTopThing` (002).
+
+  Para não voltar a atacar o líder: `cancelAttackAndFollow` e chase mode 0 se o client estiver em 1.
+  Nunca usar juntamente com 012; o pack desliga Target/Chase quando o Follow está activo.
   Depende de: 002_storage_init.lua
 ]]
 storage = (type(storage) == "table" and storage) or {}
@@ -23,7 +26,8 @@ if knightEnsureStorage then
 end
 
 local FOLLOW_POLL_MS = 85
-local SAME_FLOOR_COMFORT_DIST = 2
+-- Igual ao 012: só para de caminhar quando está colado (1 sqm ou menos).
+local SAME_FLOOR_COMFORT_DIST = 1
 local INTERRUPTOR_MS = 500
 local LADDER_USE_GAP_MS = 280
 local LADDER_ACTION_DIST = 4
@@ -47,7 +51,7 @@ local nameMatch = knightNameMatchLock or function(a, b)
 end
 
 local followEngine = knightCreateVerticalEngine("_follow")
-local followWalkMem = knightCreateWalkMemory(145, 320)
+local followWalkMem = knightCreateWalkMemory(100, 260)
 
 local lastLadderUseAt = 0
 local followWasOn = false
@@ -62,7 +66,7 @@ local function haltCombatOnLeader()
   end
 end
 
---- 012 usa setChaseMode(1) para chase; com Follow activo força 0 para nao "colar" attack no lider.
+--- 012 usa setChaseMode(1) para PVP chase; aqui força 0 para não manter attack no líder (só seguir).
 local function enforceStandChaseWhileFollow()
   if not g_game or not g_game.getChaseMode or not g_game.setChaseMode then return end
   local ok, m = pcall(function() return g_game.getChaseMode() end)
@@ -86,7 +90,7 @@ local function cancelAttackIfTargetingLeader(lname)
   end
 end
 
-local followMacro = macro(INTERRUPTOR_MS, "Follow PVP", "3", function() end)
+local followMacro = macro(INTERRUPTOR_MS, "Auto Follow", "3", function() end)
 knightFollowMacro = followMacro
 
 local function safeSetOff(m)
@@ -151,7 +155,7 @@ macro(FOLLOW_POLL_MS, function()
     if sameDist <= SAME_FLOOR_COMFORT_DIST then return end
     if not followWalkMem.shouldWalk(lp.x, lp.y, lp.z) then return end
     pcall(function()
-      autoWalk(lp, 20, { ignoreNonPathable = true, precision = 2 })
+      autoWalk(lp, 20, { ignoreNonPathable = true, precision = 1 })
     end)
     followWalkMem.remember(lp.x, lp.y, lp.z)
     return
@@ -172,7 +176,7 @@ macro(FOLLOW_POLL_MS, function()
     end
     if not followWalkMem.shouldWalk(wx, wy, lz) then return end
     pcall(function()
-      autoWalk(target, 20, { ignoreNonPathable = true, precision = 2 })
+      autoWalk(target, 20, { ignoreNonPathable = true, precision = 1 })
     end)
     followWalkMem.remember(wx, wy, lz)
   end
@@ -207,7 +211,7 @@ local function clearFollow()
   knightFlashBtn(btnClearFollow)
 end
 
-btnClearFollow = addButton("btn_clear_follow", "Clear Follow [1]", clearFollow)
+btnClearFollow = addButton("btn_clear_follow", "Limpar seguir [1]", clearFollow)
 hotkey("1", clearFollow)
 
 macro(150, function()

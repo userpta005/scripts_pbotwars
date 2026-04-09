@@ -1,8 +1,8 @@
 --[[
   020_status_hud.lua — Painel de estado (storage alimentado por 003, 012, 013, push scripts, etc.).
 
-  Linhas: último que te atacou, último alvo atacado, lock/chase, follow, push, modo derivado
-  por prioridade (push > follow > chase > lock > idle).
+  Linhas: último que te atacou, último alvo atacado, lock/chase (PVP), seguir auto (PvE), push, modo.
+  Prioridade: push > seguir auto > chase > lock > idle.
 
   No pack ordenado: último script (depois de `019_exiva.lua`).
   Depende de: 002_storage_init.lua (`knightEnsureStorage`, `knightTrim`).
@@ -30,7 +30,7 @@ local hud = {
   addLabel("k_h1", "Atacou-me: -"),
   addLabel("k_h2", "Ataquei: -"),
   addLabel("k_h3", "Alvo: -"),
-  addLabel("k_h4", "Follow: -"),
+  addLabel("k_h4", "Seguir auto: -"),
   addLabel("k_h5", "Push: -"),
   addLabel("k_h6", "Mode: idle"),
 }
@@ -59,7 +59,7 @@ macro(280, function()
   setHud(1, "Atacou-me: " .. v(am), am ~= "" and "#ff6666" or DIM)
   setHud(2, "Ataquei: " .. v(la), la ~= "" and "#66ff66" or DIM)
   setHud(3, "Alvo: " .. (targetOn and v(tgt) or "-"), targetOn and "#66ff66" or DIM)
-  setHud(4, "Follow: " .. (fOn and fl or "-"), fOn and "#66ccff" or DIM)
+  setHud(4, "Seguir auto: " .. (fOn and fl or "-"), fOn and "#66ccff" or DIM)
 
   if pv ~= "" and pd and type(pd.x) == "number" and type(pd.y) == "number" then
     setHud(5, "Push: [" .. pv .. "] > " .. pd.x .. "," .. pd.y .. (pushOn and " [ON]" or ""),
@@ -70,7 +70,7 @@ macro(280, function()
 
   local mode, mc = "Mode: idle", DIM
   if pushOn then mode, mc = "Mode: push", "#ffaa00"
-  elseif fOn then mode, mc = "Mode: follow", "#66ccff"
+  elseif fOn then mode, mc = "Modo: seguir auto (PvE)", "#66ccff"
   elseif chaseOn and targetOn and tgt ~= "" then mode, mc = "Mode: chase", "#88ff88"
   elseif targetOn and tgt ~= "" then mode, mc = "Mode: lock", "#66ff66"
   end

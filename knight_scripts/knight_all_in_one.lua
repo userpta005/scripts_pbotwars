@@ -772,13 +772,14 @@ end)
 -- ========== 012_auto_target.lua ==========
 
 --[[
-  012_auto_target.lua — Lock de alvo PVP + Auto Chase.
+  012_auto_target.lua — PVP: Auto Target + Auto Chase (mantém lock e ataca ao colar no alvo).
 
   - Auto Target (Shift+Q): mantém `g_game.attack` no jogador lockado no mesmo piso.
-  - Auto Chase (2): força chase mode 1 e perseguição vertical via motor partilhado
-    (`knightCreateVerticalEngine` de 002).
+  - Auto Chase (2): chase mode 1; mesma lógica vertical que Auto Follow (escadas, buracos, etc.)
+    via `knightCreateVerticalEngine` (002).
 
-  Exclusão mútua automática com 013 Follow PVP.
+  Auto Follow está em 013: só seguir alguém sem atacar (uso típico PvE). Nunca usar 012 e 013 juntos;
+  o pack desliga um quando o outro entra em conflito.
   Depende de: 002_storage_init.lua, 003 recomendado (lastAttacked).
 ]]
 
@@ -798,7 +799,8 @@ if knightEnsureStorage then
 end
 
 local CHASE_POLL_MS = 85
-local SAME_FLOOR_COMFORT_DIST = 2
+-- Manter igual ao 013 (autoWalk + vertical colados ao líder/alvo).
+local SAME_FLOOR_COMFORT_DIST = 1
 local REATTACK_GAP_MS = 120
 local CHASE_ATTACK_GAP_MS = 50
 local LADDER_USE_GAP_MS = 280
@@ -823,7 +825,7 @@ local nameMatch = knightNameMatchLock or function(a, b)
 end
 
 local chaseEngine = knightCreateVerticalEngine("_chase")
-local chaseWalkMem = knightCreateWalkMemory(145, 320)
+local chaseWalkMem = knightCreateWalkMemory(100, 260)
 
 local throttleAt = {}
 local function throttle(key, ms)
@@ -953,7 +955,7 @@ autoChaseMacro = macro(CHASE_POLL_MS, "Auto Chase", "2", function()
     if sameDist <= SAME_FLOOR_COMFORT_DIST then return end
     if not chaseWalkMem.shouldWalk(lp.x, lp.y, lp.z) then return end
     pcall(function()
-      autoWalk(lp, 20, { ignoreNonPathable = true, precision = 2 })
+      autoWalk(lp, 20, { ignoreNonPathable = true, precision = 1 })
     end)
     chaseWalkMem.remember(lp.x, lp.y, lp.z)
     return
@@ -974,7 +976,7 @@ autoChaseMacro = macro(CHASE_POLL_MS, "Auto Chase", "2", function()
     end
     if not chaseWalkMem.shouldWalk(wx, wy, lz) then return end
     pcall(function()
-      autoWalk(dest, 20, { ignoreNonPathable = true, precision = 2 })
+      autoWalk(dest, 20, { ignoreNonPathable = true, precision = 1 })
     end)
     chaseWalkMem.remember(wx, wy, lz)
   end
@@ -1037,14 +1039,17 @@ knightAutoChaseMacro = autoChaseMacro
 -- ========== 013_follow.lua ==========
 
 --[[
-  013_follow.lua — Follow PVP (só caminha; não mantém attack no líder).
+  013_follow.lua — Auto Follow (PvE): segue o líder colado, 100% automático, sem atacar.
 
-  Com a macro ligada, o próximo player atacado passa a ser `followLeader`. Perseguição por
-  `autoWalk`; mudança de Z via motor partilhado (`knightCreateVerticalEngine` de 002).
-  Uses em sqm adjacentes via `knightMapUseTopThing` (002).
-  Para não ficar com attack/chase preso no líder: `cancelAttackAndFollow` + chase mode 0 se estava em 1.
+  O nome do ficheiro mantém-se por ordem no pack; o rótulo da macro é "Auto Follow".
+  Uso típico: party / hunt PvE — não é o módulo PVP (isso é 012 Auto Target + Auto Chase).
 
-  Exclusão mútua automática com 012 Auto Chase.
+  Com a macro ligada, o próximo player em quem atacas passa a ser `followLeader` (marcação rápida);
+  depois cancela ataque e só `autoWalk`. Mesma dinâmica vertical que Auto Chase (escadas, buracos,
+  portais) via `knightCreateVerticalEngine` (002) e `knightMapUseTopThing` (002).
+
+  Para não voltar a atacar o líder: `cancelAttackAndFollow` e chase mode 0 se o client estiver em 1.
+  Nunca usar juntamente com 012; o pack desliga Target/Chase quando o Follow está activo.
   Depende de: 002_storage_init.lua
 ]]
 storage = (type(storage) == "table" and storage) or {}
@@ -1061,7 +1066,8 @@ if knightEnsureStorage then
 end
 
 local FOLLOW_POLL_MS = 85
-local SAME_FLOOR_COMFORT_DIST = 2
+-- Igual ao 012: só para de caminhar quando está colado (1 sqm ou menos).
+local SAME_FLOOR_COMFORT_DIST = 1
 local INTERRUPTOR_MS = 500
 local LADDER_USE_GAP_MS = 280
 local LADDER_ACTION_DIST = 4
@@ -1085,7 +1091,7 @@ local nameMatch = knightNameMatchLock or function(a, b)
 end
 
 local followEngine = knightCreateVerticalEngine("_follow")
-local followWalkMem = knightCreateWalkMemory(145, 320)
+local followWalkMem = knightCreateWalkMemory(100, 260)
 
 local lastLadderUseAt = 0
 local followWasOn = false
@@ -1122,7 +1128,7 @@ local function cancelAttackIfTargetingLeader(lname)
   end
 end
 
-local followMacro = macro(INTERRUPTOR_MS, "Follow PVP", "3", function() end)
+local followMacro = macro(INTERRUPTOR_MS, "Auto Follow", "3", function() end)
 knightFollowMacro = followMacro
 
 local function safeSetOff(m)
@@ -1187,7 +1193,7 @@ macro(FOLLOW_POLL_MS, function()
     if sameDist <= SAME_FLOOR_COMFORT_DIST then return end
     if not followWalkMem.shouldWalk(lp.x, lp.y, lp.z) then return end
     pcall(function()
-      autoWalk(lp, 20, { ignoreNonPathable = true, precision = 2 })
+      autoWalk(lp, 20, { ignoreNonPathable = true, precision = 1 })
     end)
     followWalkMem.remember(lp.x, lp.y, lp.z)
     return
@@ -1208,7 +1214,7 @@ macro(FOLLOW_POLL_MS, function()
     end
     if not followWalkMem.shouldWalk(wx, wy, lz) then return end
     pcall(function()
-      autoWalk(target, 20, { ignoreNonPathable = true, precision = 2 })
+      autoWalk(target, 20, { ignoreNonPathable = true, precision = 1 })
     end)
     followWalkMem.remember(wx, wy, lz)
   end
@@ -1243,7 +1249,7 @@ local function clearFollow()
   knightFlashBtn(btnClearFollow)
 end
 
-btnClearFollow = addButton("btn_clear_follow", "Clear Follow [1]", clearFollow)
+btnClearFollow = addButton("btn_clear_follow", "Limpar seguir [1]", clearFollow)
 hotkey("1", clearFollow)
 
 macro(150, function()
@@ -2059,8 +2065,8 @@ end)
 --[[
   020_status_hud.lua — Painel de estado (storage alimentado por 003, 012, 013, push scripts, etc.).
 
-  Linhas: último que te atacou, último alvo atacado, lock/chase, follow, push, modo derivado
-  por prioridade (push > follow > chase > lock > idle).
+  Linhas: último que te atacou, último alvo atacado, lock/chase (PVP), seguir auto (PvE), push, modo.
+  Prioridade: push > seguir auto > chase > lock > idle.
 
   No pack ordenado: último script (depois de `019_exiva.lua`).
   Depende de: 002_storage_init.lua (`knightEnsureStorage`, `knightTrim`).
@@ -2088,7 +2094,7 @@ local hud = {
   addLabel("k_h1", "Atacou-me: -"),
   addLabel("k_h2", "Ataquei: -"),
   addLabel("k_h3", "Alvo: -"),
-  addLabel("k_h4", "Follow: -"),
+  addLabel("k_h4", "Seguir auto: -"),
   addLabel("k_h5", "Push: -"),
   addLabel("k_h6", "Mode: idle"),
 }
@@ -2117,7 +2123,7 @@ macro(280, function()
   setHud(1, "Atacou-me: " .. v(am), am ~= "" and "#ff6666" or DIM)
   setHud(2, "Ataquei: " .. v(la), la ~= "" and "#66ff66" or DIM)
   setHud(3, "Alvo: " .. (targetOn and v(tgt) or "-"), targetOn and "#66ff66" or DIM)
-  setHud(4, "Follow: " .. (fOn and fl or "-"), fOn and "#66ccff" or DIM)
+  setHud(4, "Seguir auto: " .. (fOn and fl or "-"), fOn and "#66ccff" or DIM)
 
   if pv ~= "" and pd and type(pd.x) == "number" and type(pd.y) == "number" then
     setHud(5, "Push: [" .. pv .. "] > " .. pd.x .. "," .. pd.y .. (pushOn and " [ON]" or ""),
@@ -2128,7 +2134,7 @@ macro(280, function()
 
   local mode, mc = "Mode: idle", DIM
   if pushOn then mode, mc = "Mode: push", "#ffaa00"
-  elseif fOn then mode, mc = "Mode: follow", "#66ccff"
+  elseif fOn then mode, mc = "Modo: seguir auto (PvE)", "#66ccff"
   elseif chaseOn and targetOn and tgt ~= "" then mode, mc = "Mode: chase", "#88ff88"
   elseif targetOn and tgt ~= "" then mode, mc = "Mode: lock", "#66ff66"
   end
